@@ -1,0 +1,1559 @@
+<!--
+  統合レポートのシェル（外枠）。
+  - デザイントークン、基本タイポグラフィ、アプリバー、タブ切替、共通注意、フッタ、タブ制御JS
+  - 各タブの中身は下記マーカー（HTMLコメント形式）の位置に build_report.py が差し込む
+      VIEW_PAPERS   → view_papers.html
+      VIEW_OVERVIEW → view_overview.html
+      VIEW_INSIGHTS → view_insights.html
+    ※このコメント内にマーカーそのものを書くとコメントが入れ子で壊れるため名前だけ記す
+  - タブ固有のCSS・JSは各 view ファイル側に置く。ここには3タブ共通のものだけを書く。
+  - 差込後に件数と論文データのプレースホルダが置換される（名前は build_report.py 参照）。
+    プレースホルダの文字列そのものをコメントに書くと多重置換になるので書かない。
+-->
+<title>平成28年熊本地震 — JSCE全国大会論文からの振り返り</title>
+
+<style>
+  /* ================= design tokens ================= */
+  :root {
+    --ink: #1B2422; --ink-soft: #4A5654; --ink-faint: #78837F;
+    --ground: #EDEFEA; --surface: #F7F8F4; --surface-2: #E4E8E0;
+    --rule: #CBD2C9; --rule-soft: #DCE1D8;
+    --accent: #2E6B62; --accent-dim: #2E6B6218;
+    --ochre: #9C6D22; --ochre-dim: #9C6D221F;
+    --rust: #8E3D2C; --rust-dim: #8E3D2C14;
+    --serif: "Yu Mincho", YuMincho, "Hiragino Mincho ProN", "Hiragino Mincho Pro",
+             "Noto Serif JP", "Source Han Serif JP", "MS PMincho", serif;
+    --sans: "Yu Gothic", YuGothic, "Hiragino Kaku Gothic ProN", "Noto Sans JP",
+            "Meiryo", system-ui, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas,
+            "BIZ UDGothic", monospace;
+    --measure: 63ch;
+    --pad: clamp(1.15rem, 4vw, 2.75rem);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #E2E7E1; --ink-soft: #A8B2AC; --ink-faint: #7C8781;
+      --ground: #131816; --surface: #1B2220; --surface-2: #232B28;
+      --rule: #333D39; --rule-soft: #262E2B;
+      --accent: #6FB7AB; --accent-dim: #6FB7AB1C;
+      --ochre: #CE9F4E; --ochre-dim: #CE9F4E1C;
+      --rust: #C97A66; --rust-dim: #C97A6614;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #E2E7E1; --ink-soft: #A8B2AC; --ink-faint: #7C8781;
+    --ground: #131816; --surface: #1B2220; --surface-2: #232B28;
+    --rule: #333D39; --rule-soft: #262E2B;
+    --accent: #6FB7AB; --accent-dim: #6FB7AB1C;
+    --ochre: #CE9F4E; --ochre-dim: #CE9F4E1C;
+    --rust: #C97A66; --rust-dim: #C97A6614;
+  }
+  :root[data-theme="light"] {
+    --ink: #1B2422; --ink-soft: #4A5654; --ink-faint: #78837F;
+    --ground: #EDEFEA; --surface: #F7F8F4; --surface-2: #E4E8E0;
+    --rule: #CBD2C9; --rule-soft: #DCE1D8;
+    --accent: #2E6B62; --accent-dim: #2E6B6218;
+    --ochre: #9C6D22; --ochre-dim: #9C6D221F;
+    --rust: #8E3D2C; --rust-dim: #8E3D2C14;
+  }
+
+  /* ================= base ================= */
+  body { background: var(--ground); color: var(--ink); font-family: var(--sans);
+         font-size: clamp(15px, 0.95rem + 0.1vw, 16.5px); line-height: 1.85;
+         -webkit-font-smoothing: antialiased; }
+  .page { max-width: 78rem; margin: 0 auto; padding: 0 var(--pad) 5rem; }
+
+  .eyebrow { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.16em;
+             text-transform: uppercase; color: var(--ink-faint); }
+  p { max-width: var(--measure); }
+  p + p { margin-top: 1.05rem; }
+  strong { font-weight: 700; }
+  em { font-style: normal; background: var(--accent-dim); padding: 0.05em 0.28em; border-radius: 2px; }
+  .num { font-variant-numeric: tabular-nums; }
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--surface-2);
+         padding: 0.1em 0.35em; border-radius: 2px; }
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ================= app bar + tab bar ================= */
+  .appbar { position: sticky; top: 0; z-index: 40; background: var(--surface);
+            border-bottom: 1px solid var(--rule); }
+  .appbar-inner { max-width: 78rem; margin: 0 auto; padding: 0 var(--pad); }
+
+  .brandrow { display: flex; align-items: center; justify-content: space-between;
+              gap: 1rem; padding: 0.6rem 0 0.55rem; }
+  .brand { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+  .brand .bk { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.14em;
+               text-transform: uppercase; color: var(--ink-faint); }
+  .brand .bt { font-family: var(--serif); font-size: 1rem; font-weight: 700;
+               line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brandmeta { font-family: var(--mono); font-size: 0.7rem; color: var(--ink-faint);
+               font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  @media (max-width: 46rem) { .brandmeta { display: none; } }
+
+  /* 3つのビューを切り替えるセグメント型コントロール */
+  .tabbar { display: flex; gap: 0.25rem; padding: 0.25rem; margin-bottom: 0.6rem;
+            background: var(--surface-2); border: 1px solid var(--rule); border-radius: 4px; }
+  .tabbar button {
+    flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center;
+    gap: 0.45rem; font-family: var(--sans); font-size: clamp(0.79rem, 0.7rem + 0.35vw, 0.95rem);
+    line-height: 1.35; color: var(--ink-soft); background: transparent;
+    border: 1px solid transparent; border-radius: 3px; padding: 0.55rem 0.7rem;
+    cursor: pointer; transition: background 140ms ease, color 140ms ease, border-color 140ms ease; }
+  .tabbar button:hover { background: var(--surface); color: var(--ink); border-color: var(--rule); }
+  .tabbar button[aria-selected="true"] {
+    background: var(--accent); color: var(--ground); border-color: var(--accent);
+    box-shadow: 0 1px 2px rgba(0,0,0,.14); }
+  .tabbar button[aria-selected="true"]:hover { background: var(--accent); color: var(--ground); }
+  .tabbar .tb-n { font-family: var(--mono); font-size: 0.68rem; opacity: 0.6;
+                  font-variant-numeric: tabular-nums; }
+  .tabbar .tb-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabbar .tb-c { font-family: var(--mono); font-size: 0.68rem; font-variant-numeric: tabular-nums;
+                  background: var(--ground); color: var(--ink-soft);
+                  border-radius: 8px; padding: 0.02rem 0.4rem; }
+  .tabbar button[aria-selected="true"] .tb-c { background: rgba(255,255,255,.22); color: var(--ground); }
+  .tabbar button[aria-selected="true"] .tb-n { opacity: 0.75; }
+  .tb-short { display: none; }
+  @media (max-width: 40rem) {
+    .tb-full { display: none; }
+    .tb-short { display: inline; }
+    .tabbar .tb-c { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tabbar button { transition: none; } }
+
+  /* 各ビューの見出し帯（いまどのビューにいるかを常に示す） */
+  .viewhead { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap;
+              padding: 1.5rem 0 0.7rem; border-bottom: 1px solid var(--rule); }
+  .viewhead .vh-n { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+                    color: var(--accent); }
+  .viewhead .vh-t { font-family: var(--serif); font-size: 1.15rem; font-weight: 700; }
+  .viewhead .vh-d { font-size: 0.85rem; color: var(--ink-faint); }
+
+  /* ================= section primitives ================= */
+  .blk { padding-top: clamp(2.5rem, 6vw, 4rem); }
+  .blk-head { display: flex; flex-direction: column; gap: 0.55rem; margin-bottom: 1.75rem; }
+  .blk h2 { font-family: var(--serif); font-weight: 700; line-height: 1.4;
+            font-size: clamp(1.32rem, 1rem + 1.3vw, 1.95rem); text-wrap: balance; }
+  .blk h3 { font-family: var(--serif); font-size: 1.12rem; font-weight: 700;
+            line-height: 1.55; margin-bottom: 0.5rem; }
+
+  .note { max-width: var(--measure); margin-top: 2rem; padding: 1.15rem 1.3rem;
+          background: var(--surface); border-left: 3px solid var(--rust);
+          font-size: 0.94rem; color: var(--ink-soft); }
+  .note b { color: var(--ink); }
+
+  /* ================= shared table shell ================= */
+  .scroller { margin-top: 1.5rem; border-top: 1px solid var(--rule);
+              border-bottom: 1px solid var(--rule); overflow-x: auto; }
+  .scroller table { width: 100%; border-collapse: collapse; }
+  .scroller caption { caption-side: bottom; text-align: left; padding-top: 0.9rem;
+                      font-size: 0.8rem; color: var(--ink-faint); max-width: 68ch; }
+  .scroller th { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.1em;
+                 text-transform: uppercase; color: var(--ink-faint); text-align: left;
+                 font-weight: 400; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--rule); }
+  .scroller td { padding: 0.48rem 0.75rem; border-bottom: 1px solid var(--rule-soft);
+                 vertical-align: top; }
+  .scroller tbody tr:last-child td { border-bottom: 0; }
+  .scroller .r { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .scroller .dim { color: var(--ink-faint); }
+
+</style>
+
+<!-- ==================== APP BAR ==================== -->
+<header class="appbar">
+  <div class="appbar-inner">
+    <div class="brandrow">
+      <div class="brand">
+        <span class="bk">JSCE 全国大会論文データレイク</span>
+        <span class="bt">平成28年熊本地震 調査レポート</span>
+      </div>
+      <div class="brandmeta">172,974件を走査 ／ 関連 216件 ／ 2026-07-31</div>
+    </div>
+    <nav class="tabbar" role="tablist" aria-label="レポートのビュー切替">
+      <button role="tab" id="tab-papers" aria-controls="view-papers" aria-selected="true" tabindex="0">
+        <span class="tb-n">01</span>
+        <span class="tb-l"><span class="tb-full">論文一覧</span><span class="tb-short">論文一覧</span></span>
+        <span class="tb-c">216</span>
+      </button>
+      <button role="tab" id="tab-overview" aria-controls="view-overview" aria-selected="false" tabindex="-1">
+        <span class="tb-n">02</span>
+        <span class="tb-l"><span class="tb-full">概要情報</span><span class="tb-short">概要</span></span>
+        <span class="tb-c">3</span>
+      </button>
+      <button role="tab" id="tab-insights" aria-controls="view-insights" aria-selected="false" tabindex="-1">
+        <span class="tb-n">03</span>
+        <span class="tb-l"><span class="tb-full">応急対応・復旧復興への示唆</span><span class="tb-short">実務示唆</span></span>
+        <span class="tb-c">36</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<div class="page">
+
+  <!--
+  タブ01「論文一覧」の中身。検索・絞り込みのための道具として作る（読み物にしない）。
+  shell.html の VIEW_PAPERS マーカーの位置に差し込まれる。
+  このファイルだけを編集すれば、他タブに影響せず一覧の見た目・挙動を変えられる。
+
+  - CSS は全て #view-papers 配下にスコープする。id は kq- で始めて他ビューと衝突させない。
+  - 件数は DATA から数える（プレースホルダの文字列そのものはここに書かない。多重置換になる）。
+  - 論文データのJSONの差込口だけは1箇所ここに置く。
+-->
+<style>
+  /* ---- ツールバー：このビューの実体。アプリバーの直下に貼り付く ---- */
+  #view-papers { padding-top: 0.9rem; }
+
+  #kq-tools {
+    position: sticky; top: var(--barH, 6rem); z-index: 20;
+    background: var(--ground); border-bottom: 1px solid var(--rule);
+    padding: 0.2rem 0 0; }
+  #kq-tools .bar { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
+                   padding-bottom: 0.55rem; }
+
+  /* 検索欄。ツールバーの主役なので幅を優先的に取る。
+     絞り込みの select は既定の選択肢（「すべての年」等）が項目名を兼ねるので、
+     見出しラベルは置かずバーの高さを抑える（読み上げ用に aria-label を付ける）。 */
+  #view-papers .search { position: relative; display: flex; align-items: center;
+                         flex: 1 1 20rem; min-width: 0; }
+  #view-papers .search svg { position: absolute; left: 0.55rem; width: 0.95rem; height: 0.95rem;
+                             stroke: var(--ink-faint); fill: none; stroke-width: 1.8; pointer-events: none; }
+  #view-papers input[type="search"], #view-papers select {
+    font-family: var(--sans); font-size: 0.9rem; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--rule); border-radius: 3px; padding: 0.44rem 0.6rem; }
+  #view-papers input[type="search"] { width: 100%; padding-left: 2rem; padding-right: 2.6rem; }
+  #view-papers input[type="search"]::-webkit-search-cancel-button { display: none; }
+  #view-papers .kbd { position: absolute; right: 0.45rem; font-family: var(--mono);
+    font-size: 0.66rem; color: var(--ink-faint); background: var(--surface-2);
+    border: 1px solid var(--rule); border-radius: 3px; padding: 0.02rem 0.32rem; pointer-events: none; }
+  #view-papers input[type="search"]:not(:placeholder-shown) ~ .kbd { display: none; }
+  /* min-width:0 が無いと、長い選択肢（第8部門 CS…）が最小幅を決めて画面を横に溢れさせる */
+  #view-papers select { max-width: 13rem; min-width: 0; }
+  #view-papers select:disabled { color: var(--ink-faint); }
+
+  #view-papers .btn { font-family: var(--sans); font-size: 0.84rem; color: var(--ink-soft);
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 3px;
+    padding: 0.44rem 0.75rem; cursor: pointer; white-space: nowrap; }
+  #view-papers .btn:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-faint); }
+  #view-papers .btn:disabled { opacity: 0.45; cursor: default; }
+
+  /* ---- ステータス行：件数と、いま効いている条件 ---- */
+  #kq-status { display: flex; flex-wrap: wrap; gap: 0.45rem 0.8rem; align-items: center;
+               padding: 0 0 0.55rem; }
+  #kq-status .count { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-soft);
+                      font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #kq-status .count b { color: var(--accent); font-weight: 400; font-size: 1.15rem; }
+  #kq-status .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  #view-papers .fchip { font-family: var(--sans); font-size: 0.74rem; color: var(--ink-soft);
+    background: var(--surface-2); border: 1px solid var(--rule); border-radius: 10px;
+    padding: 0.08rem 0.3rem 0.08rem 0.55rem; cursor: pointer; display: inline-flex;
+    align-items: center; gap: 0.3rem; }
+  #view-papers .fchip:hover { color: var(--ink); border-color: var(--ink-faint); }
+  #view-papers .fchip i { font-style: normal; background: none; padding: 0;
+                          color: var(--ink-faint); font-size: 0.9rem; line-height: 1; }
+  #view-papers .fchip:hover i { color: var(--rust); }
+  /* 読み上げ専用（× だけでは何を解除するか伝わらないため） */
+  #view-papers .sr { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                     clip-path: inset(50%); white-space: nowrap; }
+
+  /* tier の意味は既定で畳んでおく（必要な人だけ開く） */
+  #view-papers .help { margin-left: auto; font-size: 0.78rem; color: var(--ink-faint); }
+  #view-papers .help summary { cursor: pointer; font-family: var(--mono); font-size: 0.7rem;
+                               letter-spacing: 0.06em; }
+  #view-papers .help summary:hover { color: var(--ink-soft); }
+  #view-papers .help dl { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.7rem;
+    margin-top: 0.5rem; padding: 0.6rem 0.8rem; background: var(--surface);
+    border: 1px solid var(--rule); border-radius: 3px; }
+  #view-papers .help dt { font-family: var(--mono); color: var(--ink-soft); white-space: nowrap; }
+
+  /* ---- 結果：年ごとに区切った行のリスト ---- */
+  #view-papers .yearhead {
+    position: sticky; top: calc(var(--barH, 6rem) + var(--kqTB, 6rem)); z-index: 10;
+    display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap;
+    background: var(--ground); padding: 0.5rem 0 0.35rem; margin-top: 1.1rem;
+    border-bottom: 1px solid var(--rule); }
+  #view-papers .yearhead .conf { font-family: var(--mono); font-size: 0.86rem; font-weight: 700;
+                                 letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+  #view-papers .yearhead .meta { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint);
+                                 font-variant-numeric: tabular-nums; }
+
+  #view-papers .paper { padding: 0.85rem 0.5rem 0.9rem; border-bottom: 1px solid var(--rule-soft);
+                        display: flex; flex-direction: column; gap: 0.3rem;
+                        margin: 0 -0.5rem; border-radius: 2px; }
+  #view-papers .paper:hover { background: var(--surface); }
+  #view-papers .paper .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+  #view-papers .pid { font-family: var(--mono); font-size: 0.74rem; color: var(--ink-faint);
+                      font-variant-numeric: tabular-nums; }
+  #view-papers .chip { font-size: 0.71rem; padding: 0.06rem 0.42rem; border-radius: 2px;
+                       background: var(--surface-2); color: var(--ink-soft); white-space: nowrap; }
+  #view-papers .paper:hover .chip { background: var(--surface-2); }
+  #view-papers .chip.theme { background: var(--accent-dim); color: var(--accent); }
+  #view-papers .chip.tier { font-family: var(--mono); letter-spacing: 0.06em; }
+  #view-papers .pdf { margin-left: auto; font-family: var(--mono); font-size: 0.71rem;
+    color: var(--ink-faint); text-decoration: none; border: 1px solid var(--rule);
+    border-radius: 2px; padding: 0.06rem 0.42rem; white-space: nowrap; }
+  #view-papers .pdf:hover { color: var(--accent); border-color: var(--accent); }
+  #view-papers .paper .ti { font-family: var(--serif); font-size: 1.04rem; font-weight: 700;
+                            line-height: 1.5; text-wrap: pretty; }
+  #view-papers .paper .ti a { color: inherit; text-decoration: none; }
+  #view-papers .paper .ti a:hover { color: var(--accent); }
+  #view-papers .paper .au { font-size: 0.86rem; color: var(--ink); max-width: none; }
+  #view-papers .paper .af { font-size: 0.82rem; color: var(--ink-faint); max-width: none; }
+  #view-papers .paper .kw { display: flex; flex-wrap: wrap; gap: 0.28rem; margin-top: 0.1rem; }
+  #view-papers .paper .kw span { font-size: 0.73rem; color: var(--ink-soft);
+    border: 1px solid var(--rule); border-radius: 2px; padding: 0.02rem 0.38rem; }
+  #view-papers mark { background: var(--ochre-dim); color: inherit; border-radius: 1px; padding: 0 0.1em; }
+
+  #view-papers .empty { padding: 3.5rem 0.5rem; color: var(--ink-faint); font-size: 0.92rem; }
+  #view-papers .empty .btn { margin-top: 0.9rem; }
+
+  @media (max-width: 40rem) {
+    #view-papers .kbd { display: none; }
+    #view-papers .search { flex: 1 1 100%; }
+    #view-papers select { flex: 1 1 8rem; max-width: none; }
+    #view-papers .help { margin-left: 0; }
+    /* 縦積みになったツールバーを貼り付けると画面を覆うので、狭い画面では流す */
+    #kq-tools { position: static; }
+    #view-papers { --kqTB: 0px; }
+  }
+</style>
+
+<div id="view-papers" role="tabpanel" aria-labelledby="tab-papers" tabindex="0">
+
+  <div id="kq-tools">
+    <div class="bar">
+      <span class="search">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.8" cy="6.8" r="4.6"/><path d="M10.3 10.3 14 14"/></svg>
+        <input type="search" id="kq-q" autocomplete="off"
+               aria-label="タイトル・著者・所属・キーワードを検索"
+               placeholder="タイトル・著者・所属・キーワードを検索（例: 阿蘇大橋 液状化 熊本大学）">
+        <span class="kbd">/</span>
+      </span>
+      <select id="kq-year" aria-label="年で絞り込む"></select>
+      <select id="kq-sec" aria-label="部門で絞り込む"></select>
+      <select id="kq-theme" aria-label="テーマで絞り込む"></select>
+      <select id="kq-tier" aria-label="tier で絞り込む"></select>
+      <select id="kq-sort" aria-label="並び順">
+        <option value="asc">年：古い順</option>
+        <option value="desc">年：新しい順</option>
+      </select>
+      <button class="btn" id="kq-reset" type="button" disabled>クリア</button>
+    </div>
+
+    <div id="kq-status">
+      <span class="count" aria-live="polite"><b id="kq-hit">0</b> 件<span id="kq-of"></span></span>
+      <span class="chips" id="kq-chips"></span>
+      <details class="help">
+        <summary>tier とは</summary>
+        <dl id="kq-tierhelp"></dl>
+      </details>
+    </div>
+  </div>
+
+  <div id="kq-list"></div>
+</div>
+
+<!-- 原本PDFをローカルに同梱した場合だけ pdf/manifest.js が存在する（fetch_pdfs.py が生成）。
+     無ければ404で無視され、リンクは学会サーバーのURLのまま。 -->
+<script src="pdf/manifest.js"></script>
+<script>
+(function () {
+  const DATA = {"records": [{"id": "72-01-0064", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物"], "ti": "３次元レーザスキャナを用いた熊本城石垣等の変状分析", "au": ["橋本 隆雄", "石作  克也"], "af": ["国士舘大学"], "kw": ["熊本地震", "熊本城", "石垣", "測量", "3D レーザスキャナ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0064.pdf"}, {"id": "72-01-0065", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "２０１６年熊本地震における大切畑大橋の被害分析とその一考察", "au": ["吉塚 卓史", "葛西 昭"], "af": ["熊本大学"], "kw": ["地震時挙動", "鈑桁橋", "座屈", "固有値解析", "2016 熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0065.pdf"}, {"id": "72-01-0066", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "２０１６年熊本地震における桑鶴大橋の被災ケース分析", "au": ["上田 智也", "葛西 昭", "田崎 賢治", "松永 昭吾"], "af": ["熊本大学", "上田 智也 大日本コンサルタント", "共同技術コンサルタント"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0066.pdf"}, {"id": "72-01-0067", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "２０１６年熊本地震における俵山大橋の被災状況分析", "au": ["葛西 昭", "大城 雄希", "大森 貴行", "ｍｙａ ｎａｎａｙａ"], "af": ["熊本大学"], "kw": ["2016 年熊本地震", "俵山大橋", "鈑桁橋", "局部座屈", "下横構", "地震応答解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0067.pdf"}, {"id": "72-01-0071", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層", "避難・社会・生活"], "ti": "地震動特性による平成２８年熊本地震の実被害と平成２５年熊本県地域防災計画での想定被害との比較分析", "au": ["會田 和摩", "松田 泰治", "松尾 優作"], "af": ["熊本大学"], "kw": ["平成28 年熊本地震", "平成25 年熊本県地域防災計画", "布田川断層帯", "日奈久断層帯"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0071.pdf"}, {"id": "72-01-0078", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "比抵抗映像法を用いた高尾野羽根溶岩ドーム斜面調査", "au": ["河内 義文", "假屋 隆文", "ＨＡＺＡＲＩＫＡ ＨＥＭＡＮＴＡ", "松本 大輔", "弘瀬 智隆"], "af": ["ケイズラブ"], "kw": ["２０１６年熊本地震・地すべり・テフラ層・高密度電気探査・軽石層"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0078.pdf"}, {"id": "72-01-0079", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層", "避難・社会・生活"], "ti": "２０１６年熊本地震の推計地震動分布図と国土交通省強震観測記録の非線形性の評価", "au": ["石井 洋輔", "梶尾 辰史", "片岡 正次郎"], "af": ["国土技術政策総研究所"], "kw": ["2016年熊本地震", "推計地震動分布図", "フーリエスペクトル比"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0079.pdf"}, {"id": "72-01-0086", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "２０１６年熊本地震において強震動の作用を受けた道路ネットワークの被害分析", "au": ["水越 湧太"], "af": ["筑波大学", "水越 湧太 筑波大学"], "kw": ["2016 年熊本地震", "道路ネットワーク", "地表面最大速度", "計測震度", "被害率"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0086.pdf"}, {"id": "72-01-0087", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "その他", "ths": [], "ti": "車載カメラ画像を活用した地震による道路被害の抽出に向けた基礎検討", "au": ["瀬崎 陸"], "af": ["千葉大学", "瀬崎陸,", "鹿島技術研究所"], "kw": ["平成28 年熊本地震", "ディープラーニング", "車載カメラ画像"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0087.pdf"}, {"id": "72-01-0089", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活", "復旧・復興・施工"], "ti": "２０１６年熊本地震における高速道路の機能的被害・復旧の時空間的分析", "au": ["佐藤 多恵", "能島 暢呂", "加藤 宏紀"], "af": ["岐阜大学"], "kw": ["2016 年熊本地震", "高速道路網", "道路機能の被害・復旧分析", "ネットワーク指標"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0089.pdf"}, {"id": "72-01-0097", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "熊本地震の被害を受けた通信埋設管の概況について", "au": ["若竹 雅人", "張 秋松", "末冨 岩雄", "鈴木 崇伸"], "af": ["NTT", "エイト日本技術開発", "東洋大学"], "kw": ["underground pipeline system", "2016 Kumamoto Earthquake", "conduits", "damage case analysis"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0097.pdf"}, {"id": "72-01-0099", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "２０１６年熊本地震における下水道管路網の被害と入力地震動の関係", "au": ["原 昌弘", "庄司 学", "永田 茂"], "af": ["筑波大学", "原 昌弘 筑波大学", "鹿島技術研究所"], "kw": ["2016 年熊本地震", "下水道管渠被害", "被害率曲線"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0099.pdf"}, {"id": "72-01-0103", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層", "建物被害", "避難・社会・生活"], "ti": "２０１６年熊本地震における避難者数推移への影響要因に関する考察", "au": ["永井 小雪里", "能島 暢呂", "繁田 健嗣"], "af": ["岐阜大学"], "kw": ["熊本地震", "避難者", "避難所", "余震", "仮設住宅", "みなし仮設住宅"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0103.pdf"}, {"id": "72-01-0104", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "建物被害", "ths": ["建物被害", "避難・社会・生活"], "ti": "２０１６年熊本地震の被災事例に基づく避難者人口推定式の検討", "au": ["繁田 健嗣", "能島 暢呂", "永井 小雪里"], "af": ["岐阜大学"], "kw": ["避難者", "推定式", "建物被害", "停電", "断水", "レジリエンス", "過減衰モデル"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0104.pdf"}, {"id": "72-01-0181", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "ロッキング橋脚を有する橋梁の耐震補強", "au": ["枦木 正喜", "高原 良太"], "af": ["西日本高速道路"], "kw": ["ロッキング橋脚", "熊本地震", "耐震補強", "耐震性能"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0181.pdf"}, {"id": "72-01-0379", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "熊本地震の余震応答計測を利用したゴム支承特性の同定", "au": ["クレリ ミュゲ", "長山 智則"], "af": ["東京大学", "Muge Kuleli"], "kw": ["たわみ", "無線センサ", "カルマンフィルタ", "傾斜角", "加速度"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0379.pdf"}, {"id": "72-01-0384", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "地震動・震源・断層"], "ti": "常時微動Ｈ／Ｖスペクトル比を用いた地震動推定 −２０１６熊本地震における熊本城，くまもと森都心図書館について−", "au": ["村田 晶", "秦 吉弥", "土田 美悠子", "宮島 昌克", "池本 敏和"], "af": ["金沢大学理工研究域", "大阪大学"], "kw": ["地震動推定", "常時微動観測", "2016 年熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0384.pdf"}, {"id": "72-01-0393", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "２０１６年熊本地震における設計地震力超過継続時間の評価", "au": ["山本 大喜", "能島 暢呂"], "af": ["岐阜大学"], "kw": ["2016 年熊本地震", "道路橋示方書", "設計スペクトル", "閾値超過継続時間", "地域別補正係数"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0393.pdf"}, {"id": "72-01-0394", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "２０１６年熊本地震における地殻ひずみの日変動特性と地震発生過程", "au": ["神山 眞", "小出 英夫", "沢田 康次", "秋田 宏", "千葉 則行"], "af": ["東北工業大学", "沢田康次"], "kw": ["2016 年熊本地震", "地殻変動"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0394.pdf"}, {"id": "72-01-0395", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "２０１６年熊本地震の前震（Ｍ６．５）の特性化震源モデル", "au": ["野津 厚"], "af": ["港湾空港技術研究所"], "kw": ["2016 年熊本地震", "前震", "震源モデル", "アスペリティ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0395.pdf"}, {"id": "72-01-0434", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化", "地震動・震源・断層"], "ti": "平成２８年熊本地震の御船ＩＣにおける大速度記録の原因分析", "au": ["豊増 明希", "後藤 浩之", "澤田 純男", "高橋 良和"], "af": ["京都大学"], "kw": ["2016 年熊本地震", "微動アレー観測", "地盤震動", "等価線形化法"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0434.pdf"}, {"id": "72-01-0437", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "２０１６年熊本地震の地表地震断層ごく近傍における常時微動観測", "au": ["香川 敬生", "吉田 昌平", "上野 太士"], "af": ["鳥取大学"], "kw": ["2016 年熊本地震", "地表地震断層", "常時微動"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0437.pdf"}, {"id": "72-01-0442", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "２０１６年熊本地震の本震直後における益城町市街地での地盤速度構造の推定に関する試み", "au": ["秦 吉弥", "吉見 雅行", "後藤 浩之", "中山 義久", "松川 尚史"], "af": ["大阪大学", "(国研)産業技術総研究所", "京都大学", "(協組)関西地盤環境研究センター", "中央開発ソリューションセンター", "東京工業大学環境・社会理工学院", "鳥取大学"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0442.pdf"}, {"id": "72-01-0443", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利", "地震動・震源・断層"], "ti": "臨時余震観測に基づく２０１６年熊本地震によって被災した緑川堤防沿いでのサイト増幅特性の評価", "au": ["湊 文博", "秦 吉弥", "大川 雄太郎", "山内 政輝"], "af": ["大阪大学"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0443.pdf"}, {"id": "72-01-0538", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "２０１６年熊本地震の観測波を用いた動的解析による鉛直地震動が橋梁モデルの地震時応答に及ぼす影響", "au": ["中島 昌矢", "崔 準ホ"], "af": ["九州大学"], "kw": ["熊本地震", "地震応答解析", "鉛直地震動"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0538.pdf"}, {"id": "72-01-0539", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "熊本地震で被災した連続曲線高架橋の非線形地震応答解析", "au": ["益田 諒大", "渡邊 学歩", "葛西 昭", "松永 昭吾"], "af": ["山口大学", "熊本大学", "共同技術コンサルタント"], "kw": ["連続曲線高架橋", "2016 熊本地震", "非線形応答解析", "積層ゴム支承"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0539.pdf"}, {"id": "72-01-0542", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層", "建物被害"], "ti": "ｗａｌｌｓｔａｔを利用した熊本地震における木造建物被害シミュレーション", "au": ["須藤 巧哉", "山崎 文雄", "劉 ウェン"], "af": ["千葉大学"], "kw": ["2016 年熊本地震", "建物被害", "数値シミュレーション", "木造建物", "wallstat"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0542.pdf"}, {"id": "72-01-0549", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "２０１６年熊本地震観測波を用いた落橋防止装置を有する橋梁の地震応答解析", "au": ["永原 稔之"], "af": ["九州大学", "耐震解析研究所"], "kw": ["落橋防止装置", "地震応答解析", "鉛直地震動"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0549.pdf"}, {"id": "72-01-0595", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "ライフライン", "ths": ["ライフライン"], "ti": "制震デバイスによる送電鉄塔の耐震性向上に関する基礎的研究", "au": ["松本 将之", "會田 和摩", "松田 泰治", "葛西 昭", "石田 伸幸"], "af": ["熊本大学"], "kw": ["平成28年熊本地震", "送電鉄塔", "固有値解析", "動的解析", "制震デバイス", "応答低減効果"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0595.pdf"}, {"id": "72-01-0668", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層", "避難・社会・生活"], "ti": "２０１６年熊本地震の観測波を用いた橋台衝突実験", "au": ["岩坪 要", "別城 小百合", "山岸 千夏"], "af": ["熊本高等専門学校"], "kw": ["2016 年熊本地震", "橋台衝突", "振動実験", "桁移動  連絡先：〒866-8501 熊本県八代市平山新町2627"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0668.pdf"}, {"id": "72-01-0670", "y": 2017, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害", "橋梁・構造物"], "ti": "石橋模型振動実験による壁石崩壊メカニズムの検討", "au": ["堀田 昂良", "山尾 敏孝", "高野 敬太", "岩坪 要"], "af": ["大成建設", "堀田 昂良 熊本大学", "熊本大学", "高野 敬太 熊本高専"], "kw": ["2016 年熊本地震", "石橋模型", "壁石", "正弦波加振"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-01/72-01-0670.pdf"}, {"id": "72-02-0009", "y": 2017, "s": 2, "sn": "水工学", "cs": "", "t": "A", "th": "その他", "ths": [], "ti": "２０１６年熊本地震・６月２０日豪雨からなる複合災害の発生状況調査", "au": ["桜庭 拓也", "二瓶 泰雄", "倉上 由貴", "入江 美月"], "af": ["東京理科大学"], "kw": ["2016 年熊本地震", "豪雨", "複合災害", "洪水", "地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-02/72-02-0009.pdf"}, {"id": "72-02-0073", "y": 2017, "s": 2, "sn": "水工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "２０１６年熊本地震による白川土砂流出量への影響", "au": ["山本 浩一", "赤松 良久", "乾 隆帝", "田井 明", "二瓶 泰雄"], "af": ["山口大学", "九州大学 工学研究院", "東京理科大学"], "kw": ["2016 年熊本地震", "懸濁土砂", "ガタ土", "洪水"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-02/72-02-0073.pdf"}, {"id": "72-02-0074", "y": 2017, "s": 2, "sn": "水工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "河川・堤防・水利", "地盤・液状化"], "ti": "熊本地震に起因して流出した土砂による白川河口干潟への影響", "au": ["服部 敬太朗", "田井 明", "小森田 智大", "赤松 良久", "山本 浩一"], "af": ["九州大学", "服部敬太朗", "熊本県立大学 小森田智大 山口大学"], "kw": ["熊本地震", "河口干潟", "土砂輸送"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-02/72-02-0074.pdf"}, {"id": "72-02-0114", "y": 2017, "s": 2, "sn": "水工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物"], "ti": "白川流域における熊本地震による流木災害リスクへの影響の評価", "au": ["竹村 大", "矢野 真一郎", "笠間 清伸", "土橋 将太", "富田 浩平"], "af": ["九州大学", "矢野真一郎"], "kw": ["流木災害リスク", "熊本地震", "白川"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-02/72-02-0114.pdf"}, {"id": "72-02-0221", "y": 2017, "s": 2, "sn": "水工学", "cs": "", "t": "A", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利"], "ti": "２０１６年熊本地震における干拓堤防の被災に関する現地調査", "au": ["後藤 浩", "小林 昭男", "石野 和男", "竹澤 三雄"], "af": ["日本大学", "アジア共同設計コンサルタント"], "kw": ["熊本地震", "干拓地", "海岸堤防", "被災状況"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-02/72-02-0221.pdf"}, {"id": "72-03-0072", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "河川・堤防・水利"], "ti": "２０１６年熊本地震による地下水位最大変動量", "au": ["福田 光治", "林 豊", "栗木 徳明"], "af": ["大成ジオテック"], "kw": ["熊本", "地下水", "地震応答", "2 質点水封タンクモデル"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0072.pdf"}, {"id": "72-03-0128", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利"], "ti": "熊本地震により発生した樋門・樋管の空洞の確認調査と連通試験", "au": ["白川 博之", "松下 俊樹", "末吉 仙英", "長船 建太郎"], "af": ["建設技術研究所", "国土交通省 熊本河川国道事務所"], "kw": ["樋門・樋管", "堤体の抜け上り", "空洞化", "連通試験", "遮水機能"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0128.pdf"}, {"id": "72-03-0147", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "南阿蘇村高野台地区に分布する草千里ヶ浜火山降下軽石のせん断特性", "au": ["山縣 史朗", "笠間 清伸", "古川 全太郎", "八尋 裕一", "田中 大貴"], "af": ["九州大学"], "kw": ["2016 年熊本地震", "地すべり性崩壊", "草千里ヶ浜火山降下軽石", "繰り返し一面せん断試験"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0147.pdf"}, {"id": "72-03-0166", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化"], "ti": "阿蘇大橋地区の斜面崩壊における緊急砂防対策について１ 崩壊概要と周辺の亀裂の状況", "au": ["笠井 真吾", "島本 卓三", "与那嶺 淳", "伊東 周作", "北園 芳人"], "af": ["基礎地盤コンサルタンツ", "国土交通省 九州地方整備局 河川部", "名誉教授"], "kw": ["平成28 年熊本地震", "阿蘇大橋", "災害関連緊急事業", "大規模崩壊", "不安定ブロック"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0166.pdf"}, {"id": "72-03-0167", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区の斜面崩壊における緊急砂防対策について２ 崩壊斜面の評価と緊急対策", "au": ["積田 清之", "島本 卓三", "与那嶺 淳", "澤田 量平"], "af": ["基礎地盤コンサルタンツ", "国土交通省九州地方整備局河川部"], "kw": ["阿蘇大橋", "大規模崩壊", "不安定ブロック", "監視観測", "有人化施工"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0167.pdf"}, {"id": "72-03-0168", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化"], "ti": "阿蘇大橋地区の斜面崩壊における緊急砂防対策について３ 滑落崖周辺の斜面安定化を目的とした緊急対策", "au": ["東風平 宏", "島本 卓三", "与那嶺 淳", "武石 将和"], "af": ["基礎地盤コンサルタンツ", "国土交通省 九州地方整備局 河川部"], "kw": ["平成28 年熊本地震", "阿蘇大橋", "災害関連緊急事業", "大規模崩壊", "ラウンディング"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0168.pdf"}, {"id": "72-03-0169", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化"], "ti": "阿蘇大橋地区の斜面崩壊における緊急砂防対策について４ 落石解析による崩壊斜面内の緊急対策方針の検討", "au": ["佐々木 一好", "島本 卓三", "与那嶺 淳", "渡辺 慎太郎", "三木 茂"], "af": ["基礎地盤コンサルタンツ", "国土交通省 九州地方整備局 河川部"], "kw": ["平成28 年熊本地震", "阿蘇大橋", "災害関連緊急事業", "落石解析", "不連続変形解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0169.pdf"}, {"id": "72-03-0170", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区の斜面崩壊における緊急砂防対策について５ 斜面崩壊内の有人施工着手に向けた緊急対策", "au": ["渡辺 慎太郎", "島本 卓三", "与那嶺 淳", "佐藤 静流", "村松 隆之"], "af": ["基礎地盤コンサルタンツ", "国土交通省 九州地方整備局 河川部"], "kw": ["平成28 年熊本地震", "阿蘇大橋", "災害関連緊急事業", "落石防護柵", "土留盛土工", "無人化施工"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0170.pdf"}, {"id": "72-03-0171", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化"], "ti": "阿蘇大橋地区の斜面崩壊における緊急砂防対策について６ −地震により発生する崩壊危険箇所の判定に関する一考察−", "au": ["永川 勝久", "島本  卓三", "与那嶺 淳", "樽石 静", "地頭薗 隆"], "af": ["基礎地盤コンサルタンツ", "国土交通省九州地方整備局河川部", "鹿児島大学"], "kw": ["平成28 年熊本地震", "阿蘇大橋", "砂防災害関連緊急事業", "地形解析", "LP データ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0171.pdf"}, {"id": "72-03-0172", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地震動・震源・断層"], "ti": "航空レーザーデータを用いた２０１６年熊本地震における斜面崩壊の抽出", "au": ["佐川 由季", "山崎 文雄", "Ｌｕｉｓ Ｍｏｙａ", "劉 ウェン"], "af": ["千葉大学"], "kw": ["2016 年熊本地震", "航空レーザーデータ", "地殻変動", "斜面崩壊"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0172.pdf"}, {"id": "72-03-0174", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "阿蘇の斜面崩壊をモデルとした被害範囲推定に関する数値解析的検討", "au": ["田中 大貴", "笠間 清伸", "古川 全太郎"], "af": ["九州大学"], "kw": ["2016 年熊本地震", "深層崩壊", "三次元斜面安定解析", "氾濫解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0174.pdf"}, {"id": "72-03-0175", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害"], "ti": "熊本地震による斜面の広域的崩壊危険度評価", "au": ["篠田 昌弘", "宮田 喜壽"], "af": ["防衛大学校"], "kw": ["斜面", "地震", "変位", "ニューマーク法"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0175.pdf"}, {"id": "72-03-0176", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害"], "ti": "熊本地震における南阿蘇村付近の斜面崩壊発生場の解析的検討", "au": ["新島 悠斗", "笛木 久美", "若井 明彦", "檜垣 大助", "後藤 聡"], "af": ["群馬大学", "元群馬大学", "弘前大学", "山梨大学", "砂防・地すべり技術センター"], "kw": ["熊本地震", "有限要素法", "斜面", "〒376-8515 群馬県桐生市天神町1-5-1"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0176.pdf"}, {"id": "72-03-0177", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "ＭａｔｅｒｉａｌＰｏｉｎｔＭｅｔｈｏｄを用いた斜面崩壊解析", "au": ["桐山 貴俊", "福武 毅芳"], "af": ["清水建設技術研究所 ○桐山貴俊・福武毅芳", "形係数や密度等、設計定数と共通している。その", "為、設計目的での活用が進んでいる。 他方、変形"], "kw": ["連絡先"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0177.pdf"}, {"id": "72-03-0182", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害"], "ti": "熊本誘発地震における大分道切土のり面崩落災害に関する考察について", "au": ["佐々木 啓之", "田山 聡", "浜崎 智洋"], "af": ["西日本高速道路エンジニアリング中国", "西日本高速道路"], "kw": ["道路", "斜面", "予防保全", "地震災害", "災害形態分析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0182.pdf"}, {"id": "72-03-0231", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "熊本地震により液状化が発生した鉱さい堆積場の調査対策事例", "au": ["伊東 周作", "矢幡  竜弥", "渡邊  大祐"], "af": ["基礎地盤コンサルタンツ"], "kw": ["液状化判定", "間隙水圧測定", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0231.pdf"}, {"id": "72-03-0236", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "熊本県益城町における常時微動観測結果の評価", "au": ["平井 俊之", "大島 昭彦", "小坂 慎一", "中村 優孝", "平田 茂良"], "af": ["ニュージェック", "大阪市立大学", "大島昭彦", "小坂慎一"], "kw": ["常時微動観測", "卓越周波数", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0236.pdf"}, {"id": "72-03-0240", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害"], "ti": "平成２８年熊本地震における熊本城の被災築石構造物に関する研究", "au": ["勝田 侑弥", "蒋 宇静", "大嶺 聖", "杉本 和史"], "af": ["勝田 侑弥", "蒋 宇静", "大嶺 聖"], "kw": ["地震", "城郭石垣", "個別要素法"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0240.pdf"}, {"id": "72-03-0252", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化", "地震動・震源・断層"], "ti": "２０１６年熊本地震のＫＩＫ−ｎｅｔ益城の観測地震波による豊浦砂の液状化試験", "au": ["佐藤 剛", "安田 進", "石川 敬祐"], "af": ["東京電機大学"], "kw": ["熊本地震", "地震波", "液状化強度", "繰り返しねじりせん断試験"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0252.pdf"}, {"id": "72-03-0253", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化", "建物被害"], "ti": "熊本地震における家屋被害に関わったと思われる火山灰性粘性土の動的変形特性", "au": ["安原 一哉", "渡邉 大樹", "吉見 雅行", "細矢 卓志", "荒井 靖仁"], "af": ["茨城大学", "産業技術総研究所", "中央開発"], "kw": ["熊本地震", "火山灰性粘性土", "せん断剛性", "住宅災害"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0253.pdf"}, {"id": "72-03-0254", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "微視的構造に着目した熊本平野における火山灰質砂の液状化特性", "au": ["小合 克弥", "ハザリカ ヘマンタ", "國生 剛治", "松本 大輔", "石橋 慎一朗"], "af": [], "kw": ["平成28 年熊本地震", "液状化", "火山灰質砂", "SEM", "繰返し三軸試験"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0254.pdf"}, {"id": "72-03-0303", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利"], "ti": "連続地震によって生じるため池堤体天端沈下量に及ぼす締固め度の影響", "au": ["新保 泰輝", "中村 達也", "ＡＮＴＯＩＮＥ ＤＵＴＴＩＮＥ", "矢崎 澄雄", "三谷 浩司"], "af": [], "kw": ["ため池", "剛性低下", "残留変形", "連続地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0303.pdf"}, {"id": "72-03-0397", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "熊本地震により発生した地表地震断層の特徴", "au": ["田中 慎吾", "山下 浩二", "山口 剛史"], "af": ["基礎地盤コンサルタンツ"], "kw": ["平成28年熊本地震", "災害関連緊急事業", "地表地震断層", "活断層評価", "布田川断層帯"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0397.pdf"}, {"id": "72-03-0421", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "熊本地震におけるブロック積擁壁の被災状況について", "au": ["近藤 和仁", "金丸 和生", "松岡 智"], "af": ["(公社)全国土木コンクリートブロック協会"], "kw": ["ブロック積擁壁", "地震", "現地調査", "模型実験", "維持管理"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0421.pdf"}, {"id": "72-03-0479", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利", "地盤・液状化"], "ti": "熊本地震による河川堤防の変状要因の推定を目的とした堤体開削調査", "au": ["高田 晋", "松下 俊樹", "長船 建太郎", "末吉 仙英", "遠座 昭"], "af": ["建設技術研究所", "高田晋、松下俊樹", "国土交通省 熊本河川国道事務所"], "kw": ["熊本地震", "液状化", "堤体変状", "沖積砂質土", "堤体下部", "砂脈"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0479.pdf"}, {"id": "72-03-0480", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化", "建物被害"], "ti": "２０１６熊本地震における地盤変状による小規模建築物の被害と地盤改良長の関係", "au": ["兵動 正幸", "小川 正宏", "渡邊 学歩", "力丸 翔伍"], "af": ["山口大学", "報国エンジニアリング"], "kw": ["液状化", "小規模建築物", "熊本地震", "地盤改良", "基礎"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0480.pdf"}, {"id": "72-03-0481", "y": 2017, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利"], "ti": "熊本地震を対象とした地形地質情報に基づく河川堤防の被災分析", "au": ["長濱 康太", "安福 規之", "石藏 良平"], "af": [], "kw": ["熊本地震", "河川堤防", "緑川", "被災分析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-03/72-03-0481.pdf"}, {"id": "72-04-0004", "y": 2017, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "平成２８年熊本地震における被災地の物資不足と近隣市民による物資支援の事例", "au": ["渡辺 浩", "千田 知弘", "森本 航平"], "af": [], "kw": ["熊本地震", "支援物資", "物資不足", "PUSH 型支援"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-04/72-04-0004.pdf"}, {"id": "72-04-0129", "y": 2017, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "建物被害", "ths": ["建物被害", "避難・社会・生活"], "ti": "熊本地震における益城町仮設住宅入居者の居住地選択意向に関する分析", "au": ["渡邉 萌", "佐藤 嘉洋", "円山 琢也"], "af": ["熊本大学"], "kw": ["熊本地震", "仮設住宅聞き取り調査", "居住地選択", "災害公営住宅"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-04/72-04-0129.pdf"}, {"id": "72-04-0130", "y": 2017, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "建物被害", "ths": ["建物被害", "避難・社会・生活"], "ti": "熊本地震における益城町仮設住宅聞き取り調査の自由回答の分析", "au": ["川野 倫輝", "佐藤 嘉洋", "円山 琢也"], "af": ["熊本大学"], "kw": ["平成28 年熊本地震", "仮設住宅", "テキストマイニング"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-04/72-04-0130.pdf"}, {"id": "72-04-0131", "y": 2017, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活", "復旧・復興・施工"], "ti": "震災復興期における郵送調査未回答者層の実態と意識：熊本地震益城町の事例", "au": ["佐藤 嘉洋", "長濱 康希", "円山 琢也"], "af": ["熊本大学"], "kw": ["震災復興", "郵送調査", "聞き取り調査", "未回答者"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-04/72-04-0131.pdf"}, {"id": "72-04-0138", "y": 2017, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "建物被害", "ths": ["建物被害"], "ti": "熊本地震前後の空中写真から作成したＤＳＭの差分による倒壊建物の抽出", "au": ["政春 尋志", "久保寺 貴彦", "佐藤 佑樹"], "af": ["東洋大学"], "kw": ["3D モデル", "空中写真", "SfM", "DSM", "震災", "変化抽出"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-04/72-04-0138.pdf"}, {"id": "72-06-0034", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "平成２８年熊本地震で被災したロッキング橋脚を有する橋梁の構造変更について", "au": ["西谷 朋晃", "岩尾 省吾", "工藤 昌生"], "af": [], "kw": ["平成28 年熊本地震", "ロッキング橋脚", "構造変更", "ポータルラーメン構造"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0034.pdf"}, {"id": "72-06-0503", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防災害関連緊急事業）の取組み（その１）−災害および施工の概要−", "au": ["西尾 正隆", "光武 孝弘", "宮脇 悟", "山下 正治"], "af": ["熊谷組", "西尾 正隆 宮脇 悟"], "kw": ["熊本地震", "阿蘇大橋", "砂防工事", "無人化施工", "現場マネジメント業務"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0503.pdf"}, {"id": "72-06-0504", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防災害関連緊急事業）の取組み（その２） −斜面災害危険区域での調査計測工−", "au": ["片山 政弘", "光武 孝弘", "石濱 茂崇", "土屋 任史", "土居 陽介"], "af": ["熊谷組", "日本工営柴崎 宣之 斎藤 高浩 国際航業"], "kw": ["熊本地震", "阿蘇大橋", "斜面崩壊", "航空レーザ測量", "UAV", "地表踏査"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0504.pdf"}, {"id": "72-06-0505", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防災害関連緊急事業）の取組み（その３）−厳しい条件下での重機の運搬（分解・組み立て）−", "au": ["中嶋 修作", "渡邉 賢一", "石田 直己", "長束 聖一", "戸田 修実"], "af": ["熊谷組"], "kw": ["熊本地震", "阿蘇大橋", "斜面崩壊", "砂防事業", "分解組立型バックホウ", "空輸"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0505.pdf"}, {"id": "72-06-0506", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防災害関連緊急事業）の取組み（その４）−土留盛土工の計画・設計・施工−", "au": ["天下井 哲生", "光武 孝弘", "野村 真一", "中出 剛", "土居 陽介"], "af": ["熊谷組"], "kw": ["熊本地震", "阿蘇大橋", "斜面崩壊", "砂防事業", "土留盛土工", "無人化施工"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0506.pdf"}, {"id": "72-06-0507", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防災害関連緊急事業）の取組み（その５）−土留盛土工の排水構造と施工−", "au": ["山下 正治", "光武 孝弘", "野村 真一", "佐藤 裕治", "長束 聖一"], "af": ["熊谷組"], "kw": ["熊本地震", "阿蘇大橋", "斜面崩壊", "砂防事業", "土留盛土工", "無人化施工"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0507.pdf"}, {"id": "72-06-0509", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防災害関連緊急事業）の取組み（その７）−頭部排土工の設計と施工−", "au": ["寺田 倫康", "光武 孝弘", "野村 真一", "土居 陽介", "長束 聖一"], "af": ["熊谷組"], "kw": ["熊本地震", "阿蘇大橋", "斜面崩壊", "砂防対策", "頭部排土工"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0509.pdf"}, {"id": "72-06-0510", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防災害関連緊急事業）の取組み（その８） −監視および計測−", "au": ["石濱 茂崇", "光武 孝弘", "野村 真一", "土屋 任史", "片山 政弘"], "af": ["熊谷組", "国際航業"], "kw": ["熊本地震", "阿蘇大橋", "斜面崩壊", "砂防", "監視・計測", "警報一元管理"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0510.pdf"}, {"id": "72-06-0704", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "ライフライン", "橋梁・構造物", "地盤・液状化", "避難・社会・生活", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防関連緊急事業）における「無人移動体画像伝送システム」を用いた無線通信に関する実験報告", "au": ["古谷 駿", "野村 真一", "伊藤 宗輝", "坂西 孝仁", "大本 晋士郎"], "af": ["熊谷組"], "kw": ["熊本地震", "阿蘇大橋", "砂防事業", "無人化施工", "無人移動体画像伝送システム"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0704.pdf"}, {"id": "72-06-0705", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面防災対策工事（直轄砂防災害関連緊急事業）における無人化施工建設機械の自律制御システムに関する実験報告", "au": ["飛鳥馬 翼", "野村 真一", "伊藤 宗輝", "北原 成郎", "長谷川 忠大"], "af": ["熊谷組"], "kw": ["平成28 年熊本地震", "阿蘇大橋", "砂防事業", "無人化施工", "i-Construction", "自律制御"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0705.pdf"}, {"id": "72-06-0946", "y": 2017, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "高周波衝撃弾性波法を用いた熊本地震被害基礎杭調査精度について", "au": ["塩月 隆久", "甲斐 健之"], "af": ["第一テクノコンサルタンツ"], "kw": ["非破壊試験", "衝撃弾性波法", "IT 試験", "基礎杭調査", "地震被害調査", "構造物損傷度調査"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-06/72-06-0946.pdf"}, {"id": "72-cs03-0007", "y": 2017, "s": 8, "sn": "CS", "cs": "cs03", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地震動・震源・断層", "復旧・復興・施工"], "ti": "国道３２５号阿蘇大橋の復旧計画", "au": ["西村 一朗", "山田 浩司", "草道 香成", "菅 伊佐男", "日野 伸一"], "af": ["長大", "九州大学"], "kw": ["熊本地震", "阿蘇大橋", "活断層", "架け替え", "PC ラーメン箱桁橋"], "u": "http://library.jsce.or.jp/jsce/open/00035/2017/72-cs/72-cs03-0007.pdf"}, {"id": "73-01-0074", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "熊本地震で損傷を受けた橋梁の補修補強効果検証のための計測", "au": ["中谷 隆生", "難波 正幸", "岩尾 省吾", "安里 俊則", "加川 司"], "af": ["NEXCO 西日本コンサルタンツ", "中谷隆生,", "西日本高速道路", "岩尾省吾,", "オムロンソーシアルソリューションズ", "加川 司,"], "kw": ["走行試験", "桁ひずみ計測", "桁たわみ計測", "支点反力計測", "桁安全性評価"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0074.pdf"}, {"id": "73-01-0172", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "２０１６年熊本地震本震における強震動の生成要因に関する一検討", "au": ["長坂 陽介", "野津 厚"], "af": ["港湾空港技術研究所"], "kw": ["2016 年熊本地震", "強震動シミュレーション", "浅部すべり", "アスペリティ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0172.pdf"}, {"id": "73-01-0324", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "ブレース状にダンパーが設置されていた鋼上路アーチ橋の熊本地震での挙動分析", "au": ["星隈 順一", "澤田 守", "西田 秀明"], "af": [], "kw": ["鋼上路アーチ橋", "熊本地震", "ダンパー", "動的解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0324.pdf"}, {"id": "73-01-0340", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化", "地震動・震源・断層"], "ti": "２０１６年熊本地震を用いた函渠耐震解析モデルの検討", "au": ["石村 勝伸", "原田 秀敏", "松山 彰宏"], "af": ["ニュージェック"], "kw": ["函渠", "応答震度法", "FLIP", "耐震解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0340.pdf"}, {"id": "73-01-0344", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化"], "ti": "平成２８年熊本地震による地盤変状と橋梁基礎の損傷に関する傾向分析", "au": ["鈴木 慎也", "澤田 守", "星隈 順一"], "af": ["国土技術政策総研究所 熊本地震復旧対策研究室"], "kw": ["熊本地震", "地盤変状", "基礎損傷", "構造計画"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0344.pdf"}, {"id": "73-01-0410", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害", "橋梁・構造物"], "ti": "壁石と中詰材の関係に着目した石橋模型の崩壊挙動の実験検討", "au": ["山尾 敏孝", "岩坪 要", "蓬原 拓朗", "上田 智也"], "af": ["山尾 敏孝,熊本高専", "瀧上工業"], "kw": ["壁石", "石橋模型", "中詰材", "振動実験", "崩壊挙動", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0410.pdf"}, {"id": "73-01-0411", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "熊本地震により被災した歩道橋の地震時挙動の推定", "au": ["剣持 崇平", "松崎 裕", "運上 茂樹"], "af": ["東北大学", "剣持 崇平 東北大学", "松崎 裕 東北大学"], "kw": ["積層ゴム支承", "熊本地震", "動的解析", "被害分析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0411.pdf"}, {"id": "73-01-0412", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "熊本地震を事例とした中層梁の有無が鉄道ラーメン高架橋の地震応答特性へ与える影響", "au": ["中島 英明", "和田 一範", "日野 篤志", "室野 剛隆", "山田 聖治"], "af": ["鉄道総技術研究所", "ジェイアール総研エンジニアリング", "九州旅客鉄道"], "kw": ["鉄道ラーメン高架橋", "中層梁", "周期特性"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0412.pdf"}, {"id": "73-01-0413", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化"], "ti": "２０１６年熊本地震で損傷した南阿蘇橋・制震ダンパー取り付け部の被害分析", "au": ["藤原 昌紀", "秋山 充良", "西山 聡一郎", "須田 郁慧"], "af": ["早稲田大学", "藤原 昌紀,西山 聡一郎,須田 郁慧"], "kw": ["押抜きせん断破壊", "せん断耐力階層化", "制震ダンパー取付け部", "FEM 解析", "アンカー筋埋込み長さ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0413.pdf"}, {"id": "73-01-0414", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "２０１６年熊本地震における扇の坂橋の上部構造と変位制限構造の衝突に関する有限要素解析", "au": ["ガンフ− フレルバ−トル", "梶田 幸秀", "松田 泰治", "朝廣 祐介"], "af": ["九州大学", "ガンフ- フレルバ-トル 九州大学", "松田 泰治 九州大学"], "kw": ["変位制限構造", "橋台", "ひび割れ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0414.pdf"}, {"id": "73-01-0578", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "熊本地震で発生した大規模盛土造成地の滑動崩落被害の特徴", "au": ["中野 瞳", "利藤 房男", "中尾 邦彦", "上村 佑一", "竹下 真二"], "af": [], "kw": ["大規模盛土", "熊本地震", "宅地被害"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0578.pdf"}, {"id": "73-01-0579", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "D", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "台湾花蓮地震における橋梁の被害分析", "au": ["党 紀", "林 祉青", "王 欣", "司 宏俊", "纐纈 一起"], "af": ["東京理科大学", "東京大学"], "kw": ["花蓮地震", "橋梁", "ゴム支承", "被害調査", "断層"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0579.pdf"}, {"id": "73-01-0580", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害"], "ti": "熊本城の石垣タイプ毎の被害分析について", "au": ["橋本 隆雄", "石作  克也", "マツオ ヒロシ"], "af": ["国士舘大学"], "kw": ["熊本地震", "熊本城", "石垣", "測量", "3Dレーザスキャナ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0580.pdf"}, {"id": "73-01-0581", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物"], "ti": "熊本城石垣の示力線による安定性照査の適用性について", "au": ["近藤 和仁", "橋本 隆雄", "石作 克也"], "af": ["国士舘大学", "共和コンクリート工業", "日測"], "kw": ["熊本地震", "熊本城", "石垣", "安定性", "示力線"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0581.pdf"}, {"id": "73-01-0582", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "橋梁・構造物", "地盤・液状化", "地震動・震源・断層"], "ti": "２０１６年熊本地震における通潤橋の被災メカニズムの解明", "au": ["好川 浩輝", "古川 愛子", "清野 純史"], "af": ["好川 浩輝 京都大学", "京都大学"], "kw": ["熊本地震", "改良版個別要素法", "通潤橋", "H/V スペクトル比", "被災メカニズム"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0582.pdf"}, {"id": "73-01-0603", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "地震時におけるＦＲＰ製タンク側壁の応答に関して", "au": ["小野 泰介", "井田 剛史", "平野 廣和", "河田 彰"], "af": ["エヌ・ワイ・ケイ", "小野 泰介 十川ゴム", "中央大学", "平野 広和 十川ゴム"], "kw": ["貯水槽", "地震波加振", "兵庫県南部地震", "熊本地震", "バルジング"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0603.pdf"}, {"id": "73-01-0606", "y": 2018, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "ライフライン", "ths": ["ライフライン"], "ti": "貯水槽のバルジング振動を抑制するためのダンパーの提案", "au": ["河田 彰", "平野 廣和", "井田 剛史", "石川 友樹", "小野 泰介"], "af": ["十川ゴム", "河田 彰 十川ゴム", "中央大学"], "kw": ["貯水槽", "熊本地震", "バルジング", "ダンパー"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-01/73-01-0606.pdf"}, {"id": "73-03-0008", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利", "復旧・復興・施工"], "ti": "種々の鋼矢板工法で補強した河川堤防の平成２８年熊本地震による被害の分析", "au": ["山本 秀平", "笠間 清伸", "大野 誠", "田辺 陽"], "af": ["応用地質"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0008.pdf"}, {"id": "73-03-0149", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "豊浦砂と乱した阿蘇軽石の大変形特性に関する等体積多層リングせん断試験", "au": ["塩澤 寅樹", "古関 潤一", "青柳 悠大", "森本 時生"], "af": ["東京大学"], "kw": ["2016 年熊本地震", "草千里ヶ浜火山降下軽石", "大変形特性", "多層リングせん断試験"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0149.pdf"}, {"id": "73-03-0161", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "ライフライン", "地盤・液状化"], "ti": "阿蘇カルデラで発生した陥没や亀裂と地中管路の被害の関係", "au": ["野村 勇斗", "安田 進", "石川 敬祐"], "af": ["東京電機大学"], "kw": ["地震", "地盤の陥没", "上水道", "下水道"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0161.pdf"}, {"id": "73-03-0168", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化", "地震動・震源・断層"], "ti": "２０１６年熊本地震の際に阿蘇谷内で観測された地震動波形から推定した地盤変位", "au": ["石川 敬祐", "安田 進"], "af": ["東京電機大学"], "kw": ["地震", "陥没", "カルデラ地形"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0168.pdf"}, {"id": "73-03-0224", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利"], "ti": "水前寺・江津湖周辺第１帯水層の予想される水理構造", "au": ["福田 光治", "林 豊", "栗木 徳明"], "af": ["大成ジオテック"], "kw": ["熊本", "地下水", "第1 帯水層", "突き井戸"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0224.pdf"}, {"id": "73-03-0295", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "ＤＥＭを用いた熊本地震による南阿蘇村立野地区の斜面崩壊解析", "au": ["今田 耕太郎", "赤木 寛一", "齋藤 亮", "桐山 貴俊"], "af": ["早稲田大学", "清水建設"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0295.pdf"}, {"id": "73-03-0312", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "熊本地震における強度・変形特性の低下による火山灰性粘性土地盤の不安定化とその評価", "au": ["渡邊 大樹", "安原 一哉", "小林 薫", "荒井 靖仁", "佐藤 恭兵"], "af": ["応用地質", "茨城大学", "中央開発", "東電設計", "山口大学"], "kw": ["熊本地震", "火山灰質粘性土", "不安定化"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0312.pdf"}, {"id": "73-03-0331", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化", "地震動・震源・断層", "建物被害"], "ti": "２０１６年熊本地震による益城町秋津川沿いの地盤と住宅被害について", "au": ["蒋 景彩", "中野 晋"], "af": ["徳島大学"], "kw": ["熊本地震", "地盤災害", "住宅被害", "地震動", "相互作用"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0331.pdf"}, {"id": "73-03-0350", "y": 2018, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害"], "ti": "平成２８年熊本地震における熊本城石垣の変状調査に関する研究", "au": ["カツダ ユウヤ", "勝田 侑弥", "杉本 知史", "山中 稔"], "af": ["長崎大学", "香川大学"], "kw": ["地震", "城郭石垣", "個別要素法 遠心載荷試験"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-03/73-03-0350.pdf"}, {"id": "73-04-0163", "y": 2018, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "熊本地震発生時における都市間移動の特性分析", "au": ["吉岡 知弘", "金子 雄一郎"], "af": ["日本大学"], "kw": ["熊本地震", "都市間移動", "モバイル空間統計"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-04/73-04-0163.pdf"}, {"id": "73-04-0164", "y": 2018, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活", "復旧・復興・施工"], "ti": "被災地における住民行動の回復過程に関する分析−熊本地震を事例として−", "au": ["前田 夏輝", "長曽我部 まどか", "谷本 圭志"], "af": ["鳥取大学"], "kw": ["災害復興", "位置情報データ", "熊本地震", "ゼロ過剰モデル"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-04/73-04-0164.pdf"}, {"id": "73-04-0175", "y": 2018, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "平成２８年熊本地震の土砂災害抽出に対するＳＰＯＴ衛星データによる斜め観測の影響分析", "au": ["園部 雅史", "羽柴 秀樹"], "af": ["日本大学"], "kw": ["Remote Sensing", "GIS", "Landslide", "Disaster", "SPOT"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-04/73-04-0175.pdf"}, {"id": "73-04-0189", "y": 2018, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害"], "ti": "平成２８年（２０１６年）熊本地震による熊本城石垣の変状の分析", "au": ["神谷 圭祐", "菊本 統", "橋本 涼太", "桑島 流音", "小山 倫史"], "af": ["横浜国立大学", "神谷\\u0001 圭祐", "広島大学", "関西大学", "桑島\\u0001 流音"], "kw": ["熊本地震", "熊本城", "城郭石垣", "変形・破壊", "レーザー測量", "複合構造物"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-04/73-04-0189.pdf"}, {"id": "73-04-0190", "y": 2018, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "B", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物"], "ti": "３Ｄレーザースキャナを用いた熊本城城郭石垣における変状分析−平櫓を事例として", "au": ["桑島 流音", "小山 倫史", "菊本 統", "神谷 圭亮", "橋本 涼太"], "af": ["関西大学", "横浜国立大学", "広島大学"], "kw": ["熊本地震", "熊本城", "平櫓北石垣", "石垣", "3D レーザースキャナ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-04/73-04-0190.pdf"}, {"id": "73-06-0332", "y": 2018, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "熊本地震で被災した白川橋の復旧工事", "au": ["福田 健作", "柳原 辰徳", "古賀 圭一郎", "西谷 朋晃", "岩尾 省吾"], "af": ["川田建設", "西日本高速道路", "古賀 圭一郎 西谷 朋晃"], "kw": ["支承取替", "主桁連続化", "機能分離型支承"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-06/73-06-0332.pdf"}, {"id": "73-06-0474", "y": 2018, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "ロッキング橋脚を有する橋梁の耐震補強", "au": ["枦木 正喜", "佐溝 純一"], "af": ["西日本高速道路"], "kw": ["ロッキング橋脚", "熊本地震", "耐震補強", "冗長性", "RC 巻立て"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-06/73-06-0474.pdf"}, {"id": "73-06-0654", "y": 2018, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "平成２８年熊本地震による阿蘇大橋地区斜面対策工事におけるＣＩＭを用いた施工", "au": ["佐藤 裕治", "野村 真一", "石濱 茂崇"], "af": ["熊谷組"], "kw": ["平成28 年熊本地震", "阿蘇大橋", "斜面崩壊", "砂防", "のり面CIM", "一元管理"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-06/73-06-0654.pdf"}, {"id": "73-06-0715", "y": 2018, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "M", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害", "復旧・復興・施工"], "ti": "汎用遠隔操縦装置を用いた熊本城崩落石回収の無人化施工", "au": ["宮内 賢治", "黒木 邦彦", "森 一孝"], "af": ["大林組 熊本城土木工事事務所", "大林組 大阪機械工場"], "kw": ["熊本城", "災害復旧", "サロゲート", "遠隔操縦", "無人化施工"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-06/73-06-0715.pdf"}, {"id": "73-06-0752", "y": 2018, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "新八代駅ホーム桁支柱復旧について", "au": ["森山 貞文"], "af": ["九鉄工業"], "kw": ["熊本地震", "ベント工法", "ホーム桁"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-06/73-06-0752.pdf"}, {"id": "73-06-0904", "y": 2018, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "復旧・復興・施工", "ths": ["復旧・復興・施工"], "ti": "九州新幹線における軌道スラブ交換工事の施工", "au": ["松田 直樹"], "af": ["九鉄工業"], "kw": ["スラブ軌道", "Q・T 材", "施工効率化", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-06/73-06-0904.pdf"}, {"id": "73-07-0001", "y": 2018, "s": 7, "sn": "環境・衛生工学", "cs": "", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "熊本地震における市町村の災害廃棄物発生量の比較分析", "au": ["船本 憲治", "佐川 康貴"], "af": ["西日本工業大学", "九州大学"], "kw": ["熊本地震", "東日本大震災", "災害廃棄物発生量", "市町村", "コンクリートがら"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-07/73-07-0001.pdf"}, {"id": "73-cs12-0010", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "２０１６年熊本地震における警察署員の救助活動状況の分析　―地域住民による安全に配慮した救助活動訓練の構築に向けて―", "au": ["真柄 善行", "小山 真紀", "加古 嘉信", "吉村 晶子", "佐藤 史明"], "af": ["岐阜大学", "岐阜大学流域圏科学研究センター", "千葉工業大学創造工学部", "警察庁"], "kw": ["救助活動訓練", "地域住民", "安全管理", "大規模地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0010.pdf"}, {"id": "73-cs12-0011", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "２０１６年熊本地震における避難に関する新聞報道のテキストマイニング", "au": ["加藤 宏紀", "能島 暢呂", "小山 真紀", "永井 小雪里"], "af": ["岐阜大学", "中部電力"], "kw": ["2016 年熊本地震", "新聞報道", "避難関連記事", "地方紙と全国紙", "テキストマイニング"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0011.pdf"}, {"id": "73-cs12-0012", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "避難・社会・生活"], "ti": "２０１６年熊本地震におけるライフライン被害に関する新聞報道のテキストマイニング", "au": ["田中 孝樹", "加藤 宏紀", "能島 暢呂", "小山 真紀", "永井 小雪"], "af": ["岐阜大学", "中部電力"], "kw": ["2016 年熊本地震", "新聞報道", "ライフライン関連記事", "地方紙と全国紙", "テキストマイニング"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0012.pdf"}, {"id": "73-cs12-0014", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "ライフライン", "ths": ["ライフライン"], "ti": "２０１６年熊本地震における熊本市内の上水道管路の被害分析", "au": ["田口 裕貴", "丸山 喜久"], "af": ["千葉大学"], "kw": ["熊本地震", "上水道管路", "地理情報システム（GIS）"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0014.pdf"}, {"id": "73-cs12-0016", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "ライフライン", "ths": ["ライフライン", "地盤・液状化"], "ti": "下水道埋設管路の地震被害データに対する統一的な整理・分析と解釈", "au": ["畠山 大治", "庄司 学", "永田 茂"], "af": ["筑波大学", "庄司 学 鹿島技術研究所"], "kw": ["熊本地震", "下水道埋設管路", "地震被害", "液状化", "被害率曲線"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0016.pdf"}, {"id": "73-cs12-0017", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "益城町における断層を横断する管路の交差角と被害との関係", "au": ["鍬田 泰子", "竹内 一朗"], "af": ["神戸大学", "元神戸大学"], "kw": ["熊本地震", "断層", "管路", "交差角"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0017.pdf"}, {"id": "73-cs12-0020", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化"], "ti": "２０１６年熊本地震における惣領橋の中間橋脚沈下被害に関する一検討", "au": ["副島 健太郎", "斧田 和樹", "梶田 幸秀", "松田 泰治"], "af": ["九州大学", "副島健太郎,", "斧田和樹,", "梶田幸秀,"], "kw": ["平成28 年熊本地震", "液状化", "橋梁沈下"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0020.pdf"}, {"id": "73-cs12-0021", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "曲線高架橋が橋台壁面に衝突する際の鈑桁内の応力伝播", "au": ["竹内 諒", "渡邊 学歩", "馬越 一也"], "af": ["耐震解析研究所"], "kw": ["熊本地震", "地震応答解析", "動的解析", "衝突", "鈑桁橋", "応⼒波"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0021.pdf"}, {"id": "73-cs12-0027", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "建物被害", "ths": ["建物被害"], "ti": "航空レーザー測量による２０１６年熊本地震の倒壊建物抽出", "au": ["リュウ ウェン", "山崎 文雄"], "af": ["千葉大学"], "kw": ["航空レーザー測量", "熊本地震", "倒壊建物", "高さ変化"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0027.pdf"}, {"id": "73-cs12-0028", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物"], "ti": "ＡＳＩ−Ｇａｕｓｓ法による阿蘇大橋崩落プロセスの検証", "au": ["原 倖平", "浅井 光輝", "磯部 大吾郎", "田中 聖三"], "af": ["九州大学", "筑波大学"], "kw": ["熊本地震", "阿蘇大橋", "ASI-Gauss", "弾塑性解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0028.pdf"}, {"id": "73-cs12-0041", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "平成２８年熊本地震で現れた３つの液状化帯上での前震・本震による液状化域拡大", "au": ["村上 哲", "平田 涼太郎", "田辺 隼", "三輪 滋"], "af": ["福岡大学", "飛島建設"], "kw": ["液状化", "空中写真", "噴砂", "マップ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0041.pdf"}, {"id": "73-cs12-0042", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "平成２８年熊本地震において現れた液状化帯内における液状化層の調査", "au": ["平田 涼太郎", "村上 哲", "櫨原 弘貴", "野見山 陽"], "af": ["福岡大学"], "kw": ["液状化", "地盤情報", "液状化危険度", "FL 値"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0042.pdf"}, {"id": "73-cs12-0048", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "２０１６年熊本地震被害集中域の表層凝灰質土の非線形挙動による地表応答への影響", "au": ["新垣 芳一", "栗田 哲史"], "af": ["東電設計"], "kw": ["2016 年熊本地震", "凝灰質土", "動的変形特性", "表層の増幅特性", "等価線形手法"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0048.pdf"}, {"id": "73-cs12-0050", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "余震観測調査に基づく益城町役場の地震観測記録の検証", "au": ["石井 洋輔", "片岡 正次郎", "羽田 浩二", "山田 雅行"], "af": ["国土技術政策総研究所 道路地震防災研究室"], "kw": ["2016 年熊本地震", "益城町役場", "余震観測調査"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0050.pdf"}, {"id": "73-cs12-0052", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "微動Ｈ／Ｖスペクトルを用いた２０１６年熊本地震被災地区における地震動推定", "au": ["村田 晶", "松村 直輝", "宮島 昌克"], "af": ["金沢大学理工研究域地球社会基盤学系", "越前市役所"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0052.pdf"}, {"id": "73-cs12-0056", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "残留変位を含む変位波形の計算におけるＰｈｉｎｎｅｙ法の適用について", "au": ["野津 厚"], "af": ["港湾空港技術研究所"], "kw": ["Phinney 法", "積分", "断層変位", "フリングステップ", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0056.pdf"}, {"id": "73-cs12-0062", "y": 2018, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "地震基盤波形データベースに基づく設計地震動評価の有効性", "au": ["坂井 公俊", "田中 浩平"], "af": ["(公鉄道総技術研究所"], "kw": ["地震基盤波形データベース", "設計地震動", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2018/73-cs/73-cs12-0062.pdf"}, {"id": "74-01-0063", "y": 2019, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物"], "ti": "2016年熊本地震における阿蘇大橋の破壊メカニズムの推定", "au": ["細川 聡一朗", "運上 茂樹"], "af": ["東北大学"], "kw": ["熊本地震", "阿蘇大橋", "被害分析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-01/74-01-0063.pdf"}, {"id": "74-01-0064", "y": 2019, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "２軸方向加振下での落橋防止ケーブルの効果について", "au": ["岩坪 要", "佐々木 睦", "梶田 幸秀", "葛西 昭"], "af": ["熊本高等専門学校", "三井E&S 鉄構エンジニアリング", "九州大学"], "kw": ["2016 年熊本地震", "落橋防止ケーブル", "振動実験      連絡先：〒866-8501 熊本県八代市平山新町2627"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-01/74-01-0064.pdf"}, {"id": "74-01-0229", "y": 2019, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化"], "ti": "熊本地震により損傷したフーチングの破壊メカニズム推定に関する実験的検討", "au": ["西谷 朋晃", "長谷 俊彦", "李 首一", "中谷 隆生", "大森 卓也", "木村 大吾"], "af": ["高速道路総技術研究所", "NEXCO 西日本コンサルタンツ", "i エンジニアリング"], "kw": ["熊本地震", "フーチング", "杭頭接合方法", "せん断スパン比", "破壊メカニズム"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-01/74-01-0229.pdf"}, {"id": "74-01-0331", "y": 2019, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "B", "th": "ライフライン", "ths": ["ライフライン"], "ti": "既存貯水槽における耐震性能向上のための制振装置の検討", "au": ["小野 泰介", "井田 剛史", "平野 廣和", "佐藤 尚次"], "af": ["中央大学 学生員 小野 泰介 十川ゴム", "中央大学", "平野 広和 中央大学"], "kw": ["貯水槽", "制振装置", "熊本地震", "バルジング", "スロッシング"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-01/74-01-0331.pdf"}, {"id": "74-01-0333", "y": 2019, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "ライフライン", "ths": ["ライフライン"], "ti": "熊本地震におけるステンレスパネルタンクの被害調査に関して", "au": ["平野 廣和", "遠田 豊", "竹本 純平"], "af": ["中央大学", "宮城県庁"], "kw": ["熊本地震", "ステンレスパネルタンク", "地震被害調査", "耐震設計"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-01/74-01-0333.pdf"}, {"id": "74-03-0073", "y": 2019, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利"], "ti": "熊本地下水浅井戸の地下水位季節変動", "au": ["福田 光治", "栗木 徳明"], "af": ["大成ジオテック"], "kw": ["熊本", "地下水", "浅井戸", "季節変動", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-03/74-03-0073.pdf"}, {"id": "74-03-0133", "y": 2019, "s": 3, "sn": "地盤工学", "cs": "", "t": "C", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "液状化対策の地中連続遮水壁として重曹を用いた適正配合についての研究", "au": ["田中 正智"], "af": ["国士舘大学", "サン・エンジニアリング", "アートコーポレーション"], "kw": ["遮水壁", "液状化対策", "透水試験", "一軸圧縮試験", "重曹"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-03/74-03-0133.pdf"}, {"id": "74-03-0204", "y": 2019, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "熊本地震により滑動崩落被害を受けた造成宅地の被害要因の検討（その２）", "au": ["佐藤 成", "門田 浩一", "金子 俊一郎", "東郷 智"], "af": ["パシフィックコンサルタンツ"], "kw": ["火山灰質粘性土", "繰返し荷重", "地震応答解析", "滑動崩落"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-03/74-03-0204.pdf"}, {"id": "74-03-0205", "y": 2019, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地盤・液状化"], "ti": "熊本地震により滑動崩落被害が発生した造成宅地の被災要因の検討(その1)", "au": ["門田 浩一", "佐藤 成", "金子 俊一郎", "東郷 智"], "af": ["パシフィックコンサルタンツ"], "kw": ["火山灰質粘性土", "繰返し荷重", "斜面の安定解析", "滑動崩落"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-03/74-03-0205.pdf"}, {"id": "74-03-0493", "y": 2019, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "熊本地震の液状化被害から考える液状化ハザードマップの課題", "au": ["利藤 房男"], "af": ["名古屋大学"], "kw": ["液状化", "液状化ハザードマップ", "リスク合算型ハザードマップ", "微地形判読"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-03/74-03-0493.pdf"}, {"id": "74-03-0494", "y": 2019, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化"], "ti": "平成28年熊本地震により生じた宅地擁壁被害箇所における支持地盤の土質構成について", "au": ["野見山 陽", "村上 哲"], "af": ["福岡大学"], "kw": ["火山灰質粘性土", "宅地擁壁", "地盤情報データベース"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-03/74-03-0494.pdf"}, {"id": "74-06-0096", "y": 2019, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化", "復旧・復興・施工"], "ti": "阿蘇大橋地区斜面対策工事におけるUAVでの施工管理報告", "au": ["野村 真一", "山上 直人", "北沢 俊隆", "天下井 哲夫", "行實 涼"], "af": ["熊谷組"], "kw": ["平成28 年熊本地震", "阿蘇大橋", "斜面崩壊", "砂防", "UAV", "施工管理"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-06/74-06-0096.pdf"}, {"id": "74-06-0264", "y": 2019, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "避難・社会・生活", "復旧・復興・施工"], "ti": "熊本57号災害復旧　二重峠トンネル（大津工区）工事における掘削工程短縮について", "au": ["藤田 知大", "東島 栄司"], "af": ["清水建設"], "kw": ["NATM", "急速施工", "ECI", "災害復旧事業", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-06/74-06-0264.pdf"}, {"id": "74-cs12-0022", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "平成28年熊本地震前震における後続パルス波を再現する３次元断層モデル", "au": ["豊増 明希", "後藤 浩之", "澤田 純男"], "af": ["京都大学"], "kw": ["熊本地震", "後続パルス波", "Double Difference 法", "メカニズム解", "震源モデル"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0022.pdf"}, {"id": "74-cs12-0026", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "2016年熊本地震における下水道埋設管路被害と地表断層変位との関係", "au": ["畠山 大治", "庄司 学", "永田 茂", "吉見 雅行"], "af": ["筑波大学", "庄司 学 鹿島建設技術研究所", "産業技術総研究所"], "kw": ["熊本地震", "下水道埋設管路", "地震被害", "地表断層変位", "被害形態"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0026.pdf"}, {"id": "74-cs12-0029", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "橋梁・構造物", "地盤・液状化"], "ti": "2016年熊本地震の通信用橋梁添架管路被害に係る地盤震動の特徴", "au": ["寺嶌 幹裕", "庄司 学"], "af": ["筑波大学", "寺嶌 幹裕 筑波大学システム情報系"], "kw": ["熊本地震", "橋梁添架管路", "地震被害", "有効応力解析", "液状化被害"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0029.pdf"}, {"id": "74-cs12-0030", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "熊本地震における益城での通信管路の被災分析", "au": ["奥津 大", "伊藤 陽", "庄司 学", "鈴木 崇伸"], "af": ["日本電信電話", "筑波大学", "東洋大学"], "kw": ["熊本地震", "通信管路", "地表地震断層"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0030.pdf"}, {"id": "74-cs12-0038", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害", "地盤・液状化"], "ti": "熊本地震で被災した百間石垣に対するSPH-DEM法による崩壊シミュレーション", "au": ["篠﨑 将也", "酒井 久和", "伊吹 竜一", "小野 祐輔", "桒原 陸人"], "af": ["法政大学", "篠﨑 将也,", "神戸市", "鉄道総技術研究所", "鳥取大学"], "kw": ["個別要素法", "SPH 粒子法", "数値シミュレーション", "2 次元粒状体要素解析", "熊本城百間石垣"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0038.pdf"}, {"id": "74-cs12-0040", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "地盤・液状化"], "ti": "2016年熊本地震における秋田配水場周辺地盤の地震時挙動の推定", "au": ["根本 峻"], "af": ["長岡技術科学大学"], "kw": ["地震応答解析", "2016 年熊本地震", "一次元等価線形解析", "KiK-net 益城"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0040.pdf"}, {"id": "74-cs12-0041", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化"], "ti": "惣領橋の中間橋脚沈下被害に関する地盤の不整形を考慮した検討", "au": ["丹藤 修平", "副島 健太郎", "梶田 幸秀", "松田 泰治"], "af": ["九州大学", "丹藤修平,副島健太郎,"], "kw": ["平成28 年熊本地震", "橋梁沈下", "液状化"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0041.pdf"}, {"id": "74-cs12-0056", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "熊本地震により被害を受けたゴム支承の損傷痕調査により地震時挙動の分析", "au": ["横山 朋弘", "余野 智哉", "大住 道生"], "af": ["国立研究開発法人土木研究所"], "kw": ["熊本地震", "橋梁", "ゴム支承", "損傷痕", "地震作用の推定"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0056.pdf"}, {"id": "74-cs12-0082", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "B", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "高速道路を対象とした地震時機能的フラジリティ関数の構築と震災間比較", "au": ["加藤 宏紀", "能島 暢呂", "佐藤 多恵"], "af": ["岐阜大学", "愛知県庁"], "kw": ["高速道路", "通行止め", "2011 年東北地方太平洋沖地震", "2016 年熊本地震", "2018 年大阪府北部の地震", "2018 年"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0082.pdf"}, {"id": "74-cs12-0086", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物"], "ti": "全偏波航空機SAR画像を用いた2016年熊本地震による斜面崩壊と橋梁被害の検出", "au": ["劉 ウェン", "田邉 諒士", "山崎 文雄", "児島 正一郎"], "af": ["千葉大学", "元千葉大学", "防災科学技術研究所", "情報通信研究機構"], "kw": ["航空機Pi-SAR-X2 画像", "熊本地震", "斜面崩壊", "橋梁被害"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0086.pdf"}, {"id": "74-cs12-0087", "y": 2019, "s": 8, "sn": "CS", "cs": "cs12", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "航空測量データを用いた熊本地震における道路盛土沈下量の分析", "au": ["日下 寛彦", "中村 洋丈", "中澤 正典", "村上 豊和", "眞野 基大", "呂 佩哲"], "af": ["高速道路総技術研究所", "西日本高速道路", "エイト日本技術開発"], "kw": ["地震", "熊本地震", "軟弱地盤", "道路盛土", "航空測量", "沈下"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs12-0087.pdf"}, {"id": "74-cs14-0003", "y": 2019, "s": 8, "sn": "CS", "cs": "cs14", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "高性能計算を用いた断層変位評価　−(3) 2016年熊本地震の解析−", "au": ["羽場 一基", "澤田 昌孝", "篠原 魁", "堀 宗朗"], "af": ["大成建設", "電力中央研究所", "海洋研究開発機構"], "kw": ["高性能数値計算", "断層変位", "副断層", "並列計算", "三次元解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs14-0003.pdf"}, {"id": "74-cs14-0013", "y": 2019, "s": 8, "sn": "CS", "cs": "cs14", "t": "D", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "断層変位と地震動の両方の影響を受ける防潮堤杭基礎の設計法", "au": ["岩舘 礼", "山口 和英", "佐藤 達也", "永井 秀樹", "佐々木 智大", "堤内 隆広"], "af": ["大林組", "佐藤達也", "佐々木智大"], "kw": ["津波防潮堤", "断層変位", "地震応答解析", "重畳現象", "設計法"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs14-0013.pdf"}, {"id": "74-cs3-0022", "y": 2019, "s": 8, "sn": "CS", "cs": "cs3", "t": "M", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化", "地震動・震源・断層"], "ti": "地盤変状が橋の性能に及ぼす影響を最小化するための構造計画の事例", "au": ["星隈 順一", "今村 隆浩", "西田 英明"], "af": ["国土技術政策総研究所 熊本地震復旧対策研究室"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs3-0022.pdf"}, {"id": "74-cs5-0007", "y": 2019, "s": 8, "sn": "CS", "cs": "cs5", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "橋梁・構造物", "地盤・液状化"], "ti": "MPMを用いた崩壊土砂の衝撃作用の分析", "au": ["吉田 昂平", "山口 裕矢", "森口 周二", "寺田 賢二郎"], "af": ["東北大学", "東北大学(災害科学国際研究所)"], "kw": ["熊本地震", "阿蘇大橋", "MPM", "衝撃力", "崩壊土砂の動的解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2019/74-cs/74-cs5-0007.pdf"}, {"id": "75-01-0464", "y": 2020, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "D", "th": "ライフライン", "ths": ["ライフライン"], "ti": "ステンレス鋼製貯水槽における高減衰ゴムの温度変化による動水圧低減効果の実験的研究", "au": ["佐久間 真輝", "鈴木 森晶", "青木 大祐", "行田 聡", "坂東 芳行"], "af": ["愛知工業大学", "佐久間真輝,", "森松工業"], "kw": ["タンク", "ステンレス", "バルジング"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-01/75-01-0464.pdf"}, {"id": "75-01-0467", "y": 2020, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "M", "th": "ライフライン", "ths": ["ライフライン"], "ti": "ステンレス製パネルタンクの流体と構造を連成しての固有値解析と時刻歴応答解析", "au": ["竹本 純平", "小野 泰介", "平野 廣和", "佐藤 尚次"], "af": ["中央大学"], "kw": ["ステンレスパネルタンク", "バルジング", "時刻歴応答解析", "固有値解析", "応力集中"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-01/75-01-0467.pdf"}, {"id": "75-03-0071", "y": 2020, "s": 3, "sn": "地盤工学", "cs": "", "t": "C", "th": "地盤・液状化", "ths": ["地盤・液状化"], "ti": "粒子構造と粒子形状が液状化強度に及ぼす影響（その２）", "au": ["出野 智之", "原田 健二", "矢部 浩史", "江副 哲", "日下部 真佑"], "af": ["不動テトラ"], "kw": ["粒子構造", "供試体作製"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-03/75-03-0071.pdf"}, {"id": "75-03-0125", "y": 2020, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害"], "ti": "熊本地震により阿蘇市役犬原で発生した帯状陥没のメカニズム 東京電機大学      名誉会員 ○安田 進", "au": ["安田 進", "石川 敬祐", "大保 直人"], "af": ["東京電機大学", "地震予知総研究振興会"], "kw": ["地震", "陥没", "埋戻し"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-03/75-03-0125.pdf"}, {"id": "75-03-0185", "y": 2020, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "地盤・液状化", "ths": ["地盤・液状化", "建物被害"], "ti": "想定外はなぜ起きるのか？：地盤工学的考察", "au": ["安原 一哉"], "af": ["茨城大学 地球・地域環境創生機構(GLEC)"], "kw": ["熊本地震", "火山灰質粘性土", "住宅基礎", "傾斜地盤", "未曽有"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-03/75-03-0185.pdf"}, {"id": "75-03-0280", "y": 2020, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "その他", "ths": [], "ti": "被災土構造物の維持管理のための遮水・保湿シートの降雨実験", "au": ["澤田 茉伊", "中川 正貴", "小椋 大輔"], "af": ["京都大学"], "kw": ["不飽和土", "浸透", "古墳墳丘"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-03/75-03-0280.pdf"}, {"id": "75-03-0399", "y": 2020, "s": 3, "sn": "地盤工学", "cs": "", "t": "B", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利"], "ti": "水位変化からみた熊本市域被圧地下水の地域性", "au": ["福田 光治", "栗木 徳明"], "af": ["大成ジオテック"], "kw": ["熊本", "被圧地下水", "地域性", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-03/75-03-0399.pdf"}, {"id": "75-03-0443", "y": 2020, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "地盤・液状化", "ths": ["地盤・液状化", "復旧・復興・施工"], "ti": "震災時の高速道路盛土における一次復旧作業の整理分析", "au": ["中島 康介", "日下 寛彦", "安部 哲生", "佐伯 宗大", "眞野 基大", "呂 佩哲"], "af": [], "kw": ["高速道路", "盛土", "地震被害", "復旧作業", "作業量", "時間推移"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-03/75-03-0443.pdf"}, {"id": "75-06-0131", "y": 2020, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "復旧・復興・施工"], "ti": "災害発生土を活用した落石防護補強土壁の構築（2016.4 熊本地震 災害復旧工事）", "au": ["竹下 晃史"], "af": ["九鉄工業"], "kw": ["災害復旧", "落石止防護補強土壁"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-06/75-06-0131.pdf"}, {"id": "75-06-0450", "y": 2020, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "D", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "防災・減災の強化に向けた更なる耐震補強報告（その２） －鋼鈑桁と連続するトラス橋の耐震補強対策－", "au": ["熊坂 徹也", "舘岡 真仁", "審良 郁夫", "田中 周治", "宮内 健"], "af": ["オリエンタルコンサルタンツ"], "kw": ["トラス橋", "耐震補強", "非線形動的解析", "ファイバーモデル", "免震化", "初期不整"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-06/75-06-0450.pdf"}, {"id": "75-06-0453", "y": 2020, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "B", "th": "ライフライン", "ths": ["ライフライン"], "ti": "通信用鋼管差込継手の曲げ強度特性に関する実験", "au": ["大家 祐一", "奥津 大", "伊藤 陽", "鈴木 崇伸"], "af": ["NDS", "日本電信電話", "東洋大学"], "kw": ["通信用管路", "鋼管", "差込継手", "熊本地震", "経年変化", "載荷試験"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-06/75-06-0453.pdf"}, {"id": "75-06-0688", "y": 2020, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "熊本地震により被災した九州自動車道緑川橋の震災復旧", "au": ["古賀 圭一郎", "岩尾 省吾", "西谷 朋晃", "新田 明"], "af": ["西日本高速道路"], "kw": ["熊本地震", "震災復旧", "バイパス工法", "支承取替", "緑川橋"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-06/75-06-0688.pdf"}, {"id": "75-06-0858", "y": 2020, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "熊本地震被害を受けた立野トンネル復旧工事", "au": ["大本 晋士郎", "西金 佑一郎", "村上 昌彦", "神川 孝洋", "挟間 裕", "永渕 関", "松本 大輔", "佐藤 久也"], "af": ["九州旅客鉄道", "JR 九州コンサルタンツ", "熊谷組"], "kw": ["地震", "トンネル", "坑門", "内面補強", "補修"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-06/75-06-0858.pdf"}, {"id": "75-cs01-0033", "y": 2020, "s": 8, "sn": "CS", "cs": "cs01", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "熊本地震で被災した斜張橋の復旧事例に基づく 道路橋を維持管理する技術力に関する一考察", "au": ["宮原 史"], "af": ["国土交通省 国土技術政策総研究所"], "kw": ["技術力", "人材育成", "道路橋", "維持管理", "ブルーム・タキソノミー"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-cs/75-cs01-0033.pdf"}, {"id": "75-cs10-0019", "y": 2020, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "建物被害", "ths": ["建物被害"], "ti": "現地写真を用いた畳み込みニューラルネットワークによる建物の被災度判別", "au": ["戸澤 謙弥"], "af": ["千葉大学"], "kw": ["深層学習", "画像認識", "建物被害", "現地写真", "2016 年熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-cs/75-cs10-0019.pdf"}, {"id": "75-cs10-0029", "y": 2020, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "地表地震断層に着目した熊本地震における通信管路被災分析", "au": ["奥津 大", "伊藤 陽", "板坂 浩二", "庄司 学", "鈴木 崇伸"], "af": ["日本電信電話", "筑波大学", "東洋大学"], "kw": ["熊本地震", "地表地震断層", "通信管路", "被災率"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-cs/75-cs10-0029.pdf"}, {"id": "75-cs10-0066", "y": 2020, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活", "復旧・復興・施工"], "ti": "平成28 年熊本地震における基礎自治体の応急復旧対応に関するヒアリング調査", "au": ["山本 一敏", "山本 幸", "柿本 竜治"], "af": ["テクニカルリンク", "東京建設コンサルタント", "熊本大学"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-cs/75-cs10-0066.pdf"}, {"id": "75-cs10-0067", "y": 2020, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活", "復旧・復興・施工"], "ti": "平成28 年熊本地震後初期の建設会社の応急復旧対応に関するヒアリング調査", "au": ["柳原 純夫", "山本 幸", "柿本 竜治"], "af": ["奥村組", "東京建設コンサルタント", "熊本大学"], "kw": ["平成28 年熊本地震", "ヒアリング調査", "応急復旧", "災害協定", "安全性と補償", "プッシュ型支援"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-cs/75-cs10-0067.pdf"}, {"id": "75-cs17-0008", "y": 2020, "s": 8, "sn": "CS", "cs": "cs17", "t": "D", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "直観的に操作できるバーチャルリアリティシステムによる火災時の人の行動特性の解明", "au": ["小野 栄子", "棚橋 重仁", "田部田 晋", "大森 高樹"], "af": ["日建設計シビル", "新潟大学"], "kw": ["バーチャルリアリティ", "火災", "避難行動"], "u": "http://library.jsce.or.jp/jsce/open/00035/2020/75-cs/75-cs17-0008.pdf"}, {"id": "76-01-0382", "y": 2021, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "2016 年熊本地震で被害を受けた鋼斜張橋の再現解析 宇都宮大学", "au": ["青田 洸希", "藤倉 修一"], "af": ["⃝青田洸希"], "kw": ["鋼斜張橋", "熊本地震", "曲線橋", "内陸直下型地震", "非線形動的解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-01/76-01-0382.pdf"}, {"id": "76-02-0112", "y": 2021, "s": 2, "sn": "水工学", "cs": "", "t": "B", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "河川・堤防・水利", "地盤・液状化"], "ti": "白川河口干潟の地盤変化特性および干潟生態系の長期変化", "au": ["竹下 佳佑", "田井 明", "小森田 智大", "山田 勝雅"], "af": ["九州大学", "熊本県立大学", "熊本大学"], "kw": ["白川", "熊本地震", "土砂流出", "アサリ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-02/76-02-0112.pdf"}, {"id": "76-03-0308", "y": 2021, "s": 3, "sn": "地盤工学", "cs": "", "t": "A", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害", "地震動・震源・断層"], "ti": "2016 年熊本地震における阿蘇カルデラ陥没被害に及ぼした連発地震の影響", "au": ["中井 健太郎", "福田 慎也", "野田 利弘", "浅岡 顕", "村尾 英彦"], "af": ["中井健太郎,(学)福田慎也,(", "地震予知総研究振興会 ("], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-03/76-03-0308.pdf"}, {"id": "76-04-0094", "y": 2021, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "C", "th": "建物被害", "ths": ["建物被害", "避難・社会・生活"], "ti": "令和2 年7 月豪雨被災地の人の移動に関する考察 −災害救助法指定地区を対象に−", "au": ["木村 航平", "松丸 亮", "樋口 務"], "af": ["東洋大学", "くまもと災害ボランティア団体ネットワーク"], "kw": ["令和2 年7 月豪雨", "熊本県内被災地", "人口動態"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-04/76-04-0094.pdf"}, {"id": "76-06-0407", "y": 2021, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利", "地震動・震源・断層", "復旧・復興・施工"], "ti": "熊本地震の影響を受けた導水路の施工記録 ―白川発電所 建屋補修・水車発電機基礎工事―", "au": ["土橋 大樹", "寺井 昌栄"], "af": ["熊谷組 九州支店 内谷第一PS 作業所"], "kw": ["水力発電所", "導水路", "熊本地震", "崩落", "落盤", "断層"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-06/76-06-0407.pdf"}, {"id": "76-06-0605", "y": 2021, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "M", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物"], "ti": "特別史跡熊本城天守閣における石垣修復および地震時安全対策事例", "au": ["川本 卓人", "増田 智", "嘉村 哲也", "森田 晃司", "仲西 耕平", "宮田 政市"], "af": ["熊本市役所", "増田 智 熊本市役所", "大林組"], "kw": ["特別史跡", "熊本城", "石垣修復", "安全対策", "ジオグリッド"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-06/76-06-0605.pdf"}, {"id": "76-cs10-0004", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "橋梁・構造物", "地震動・震源・断層"], "ti": "2016 年熊本地震の際に橋梁添架管路に作用し得た地表断層変位の推定", "au": ["松本 拓郎", "庄司 学", "奥津 大"], "af": ["筑波大学", "松本拓郎 筑波大学システム情報系", "日本電信電話"], "kw": ["熊本地震", "通信用橋梁添架管路", "地表断層変位", "交差角", "管軸方向", "管軸直角方向"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0004.pdf"}, {"id": "76-cs10-0005", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "2016 年熊本地震で発生した地表断層変位に対する上・下水道埋設管路被害", "au": ["皆川 大雅", "庄司 学"], "af": ["筑波大学", "皆川 大雅 筑波大学システム情報系"], "kw": ["熊本地震", "上水道埋設管路", "下水道埋設管路", "地表断層変位", "被害率", "空中写真"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0005.pdf"}, {"id": "76-cs10-0011", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "平成28 年熊本地震の余震観測記録を用いた西原村役場地点のサイト増幅特性の分析", "au": ["石井 洋輔", "片岡 正次郎", "山田 雅行"], "af": ["国土技術政策総研究所 道路地震防災研究室", "ニュージェック"], "kw": ["平成28年(2016年)熊本地震", "西原村役場", "余震観測調査"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0011.pdf"}, {"id": "76-cs10-0025", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地盤・液状化"], "ti": "2016 熊本地震で被災した大切畑大橋の下部構造－周辺地盤系の3 次元FE モデル", "au": ["庄司 学", "宇都宮 大治", "大住 道生"], "af": ["長大", "田中 賢太 長大"], "kw": ["鋼アーチ橋", "下路式", "地震応答", "振動特性"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0025.pdf"}, {"id": "76-cs10-0034", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "ライフライン", "ths": ["ライフライン"], "ti": "合成開口レーダ画像の干渉SAR 解析による3 次元変位と通信埋設管被害の傾向分析", "au": ["伊藤 陽", "奥津 大"], "af": ["NTT アクセスサービスシステム研究所"], "kw": ["通信埋設管", "硬質塩化ビニル管", "合成開口レーダ", "永久変位", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0034.pdf"}, {"id": "76-cs10-0035", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "2018 年北海道胆振東部地震強震地域における通信管路調査", "au": ["奥津 大", "伊藤 陽", "板坂 浩二"], "af": ["NTT アクセスサービスシステム研究所"], "kw": ["通信埋設管", "硬質塩化ビニル管", "合成開口レーダ", "永久変位", "熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0035.pdf"}, {"id": "76-cs10-0041", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "M", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害", "地震動・震源・断層"], "ti": "熊本城石垣における累積示力線法を用いた耐震性能の検証", "au": ["橋本 隆雄", "磯部  有作", "松尾  拓", "石作  克也"], "af": ["国士舘大学", "IMAGEi Consultant"], "kw": ["石垣", "熊本城", "城壁", "示力線", "安定解析", "FEM 解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0041.pdf"}, {"id": "76-cs10-0045", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "地震時における鉄道運休期間の予測と震災間比較", "au": ["加藤 宏紀", "能島 暢呂", "白川 航平"], "af": ["岐阜大学", "加藤宏紀・能島暢呂,刈谷市役所"], "kw": ["鉄道", "運休期間の予測", "2011 年東北地方太平洋沖地震", "2016 年熊本地震", "2018 年大阪府北部の地震", "2018"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0045.pdf"}, {"id": "76-cs10-0047", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "その他", "ths": [], "ti": "2016 年熊本地震で被災した道路構造物の航空写真に基づく被害判別", "au": ["近藤 陸", "庄司 学"], "af": ["筑波大学", "近藤陸 筑波大学システム情報系"], "kw": ["熊本地震", "航空写真", "道路被害", "テクスチャ解析", "被害判別", "GIS"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0047.pdf"}, {"id": "76-cs10-0048", "y": 2021, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "河川・堤防・水利", "ths": ["河川・堤防・水利", "建物被害"], "ti": "航空レーザ測量データの機械学習による地震被害建物の検出", "au": ["籠嶋 彩音", "劉 ウェン", "丸山 喜久"], "af": ["千葉大学"], "kw": ["熊本地震", "地理情報システム(GIS)", "ランダムフォレスト", "被害認定調査", "航空レーザ測量"], "u": "http://library.jsce.or.jp/jsce/open/00035/2021/76-cs/76-cs10-0048.pdf"}, {"id": "77-01-0326", "y": 2022, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "M", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害", "橋梁・構造物", "避難・社会・生活"], "ti": "石ブロック形状の変化による耐震性向上に関する振動実験", "au": ["岩坪 要", "石川 龍星", "森山 仁志", "山尾 敏孝"], "af": ["熊本高等専門学校", "徳島大学", "熊本大学"], "kw": ["石橋", "耐震", "転倒モーメント", "モーションキャプチャ"], "u": "http://library.jsce.or.jp/jsce/open/00035/2022/77-01/77-01-0326.pdf"}, {"id": "77-04-0116", "y": 2022, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "感染症対策の有無による避難所収容状況の定量的な評価 ―2016 年熊本地震を例にして―", "au": ["保坂 悠人", "佐藤 尚次"], "af": [], "kw": ["避難", "避難所", "収容人数", "感染症対策"], "u": "http://library.jsce.or.jp/jsce/open/00035/2022/77-04/77-04-0116.pdf"}, {"id": "77-cs10-0015", "y": 2022, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "地盤・液状化", "ths": ["地盤・液状化", "地震動・震源・断層", "建物被害"], "ti": "2016 年熊本地震の益城町の建物被害調査と微動観測結果の比較", "au": ["落合 努", "荏本 孝久", "宮野 道雄", "生田 英輔", "小田 義也"], "af": ["神奈川大学", "落 努 神奈川大学", "大阪公立大学", "宮野 道雄 大阪公立大学", "東京都立大学"], "kw": ["2016 年熊本地震", "常時微動観測", "建物被害", "益城町", "地盤震動特性"], "u": "http://library.jsce.or.jp/jsce/open/00035/2022/77-cs/77-cs10-0015.pdf"}, {"id": "77-cs10-0035", "y": 2022, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "地震応答解析における断層変位の入力方法に関する検討", "au": ["横澤 直人", "河原井 耕介", "中尾 尚史", "大住 道生"], "af": ["(国研)土木研究所"], "kw": ["耐震設計", "動的解析", "断層変位", "熊本地震", "扇の坂橋"], "u": "http://library.jsce.or.jp/jsce/open/00035/2022/77-cs/77-cs10-0035.pdf"}, {"id": "77-cs10-0073", "y": 2022, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "その他", "ths": [], "ti": "航空写真に基づく道路路面の地震被害モードの判別", "au": ["近藤 陸", "庄司 学"], "af": ["筑波大学", "近藤陸 筑波大学システム情報系"], "kw": ["熊本地震", "航空写真", "道路路面", "地震被害モード", "テクスチャ解析", "被害判別", "GIS"], "u": "http://library.jsce.or.jp/jsce/open/00035/2022/77-cs/77-cs10-0073.pdf"}, {"id": "77-cs10-0099", "y": 2022, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "熊本地震における長周期パルスの作用を受けた大切畑大橋・上部構造の3 次元動的挙動", "au": ["山本 翔吾", "庄司 学", "大住 道生"], "af": ["筑波大学", "土木研究所"], "kw": ["熊本地震", "大切畑大橋", "3 次元FE モデル"], "u": "http://library.jsce.or.jp/jsce/open/00035/2022/77-cs/77-cs10-0099.pdf"}, {"id": "77-cs10-0100", "y": 2022, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "熊本地震における鋼斜張橋被害の再現解析", "au": ["石原 佳奈", "長山 智則"], "af": ["東京大学"], "kw": ["固有値解析", "非線形時刻歴応答解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2022/77-cs/77-cs10-0100.pdf"}, {"id": "78-03-0241", "y": 2023, "s": 3, "sn": "地盤工学", "cs": "", "t": "C", "th": "ライフライン", "ths": ["ライフライン", "河川・堤防・水利", "地盤・液状化", "復旧・復興・施工"], "ti": "既設アースダムの耐震補強工事に伴う強化盛土材の品質管理", "au": ["橋本 和明", "福田 謙太郎", "森 篤史", "下田 聡", "齊藤 淳", "中村 幸生"], "af": ["KGIE"], "kw": ["熊本", "被圧地下水位", "季節変動", "季節揚水", "タンクモデル"], "u": "http://library.jsce.or.jp/jsce/open/00035/2023/78-03/78-03-0241.pdf"}, {"id": "78-04-0066", "y": 2023, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "熊本地震が九州各県の観光需要に与えた影響の定量分析 応用地質株式会社 共創Lab", "au": ["山崎 雅人", "清水 智", "井出 修"], "af": ["共創Lab"], "kw": ["熊本地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2023/78-04/78-04-0066.pdf"}, {"id": "78-cs07-0001", "y": 2023, "s": 8, "sn": "CS", "cs": "cs07", "t": "B", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "南阿蘇鉄道 第一白川橋梁の復旧について", "au": ["横山 秀喜", "津留 恒誉", "小原 淳一", "北川 淳一"], "af": ["鉄道・運輸機構", "八千代エンジニヤリング", "小原 淳一,エムエムブリッジ"], "kw": ["鉄道", "熊本地震", "災害復旧", "補助金"], "u": "http://library.jsce.or.jp/jsce/open/00035/2023/78-cs/78-cs07-0001.pdf"}, {"id": "78-cs10-0018", "y": 2023, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "ライフライン", "ths": ["ライフライン", "橋梁・構造物", "地盤・液状化", "地震動・震源・断層"], "ti": "地表断層変位の作用を受ける橋梁添架管路の弾塑性変形挙動", "au": ["庄司 学", "松本 拓郎", "奥津 大"], "af": ["筑波大学システム情報系", "日本電信電話"], "kw": ["熊本地震", "橋梁添架管路", "地表断層変位", "弾塑性変形挙動"], "u": "http://library.jsce.or.jp/jsce/open/00035/2023/78-cs/78-cs10-0018.pdf"}, {"id": "78-cs10-0048", "y": 2023, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "ライフライン", "ths": ["ライフライン", "地震動・震源・断層"], "ti": "強震動と地表断層変位の空間変動を考慮した上・下水道埋設管路のフラジリティ特性", "au": ["岡野 莉子", "庄司 学"], "af": ["筑波大学"], "kw": ["熊本地震", "上・下水道埋設管路", "フラジリティ特性", "地表面最大速度", "地表断層変位"], "u": "http://library.jsce.or.jp/jsce/open/00035/2023/78-cs/78-cs10-0048.pdf"}, {"id": "79-01-0367", "y": 2024, "s": 1, "sn": "構造工学・地震工学・維持管理工学", "cs": "", "t": "M", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "落橋防止ケーブルの損傷程度が引張強度に与える影響について", "au": ["岩坪 要", "溝上 真琴", "前床 珠璃菜", "上田橋 克", "森山 仁志"], "af": ["熊本高等専門学校", "岩坪要", "溝上真琴"], "kw": ["落橋防止ケーブル", "破断強度", "PC 鋼より線", "耐震設計", "落橋防止装置   連絡先：〒866-8501 熊本県八代市平"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-01/79-01-0367.pdf"}, {"id": "79-02-0193", "y": 2024, "s": 2, "sn": "水工学", "cs": "", "t": "C", "th": "斜面崩壊・土砂災害", "ths": ["斜面崩壊・土砂災害"], "ti": "山岳地域のトラブルスポット上流域における環境条件の検証", "au": ["池本 海周", "渡部 泰介", "川越 清樹"], "af": ["福島大学", "福島大学大学共生システム理工学類"], "kw": [], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-02/79-02-0193.pdf"}, {"id": "79-06-0891", "y": 2024, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "D", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "落橋防止システム整備における施工上の課題と対応事例について", "au": ["寺西 健太", "森下 淳平", "西嶋 義則", "緑川 崇", "取越 達也"], "af": ["中日本ハイウェイ・エンジニアリング名古屋"], "kw": ["耐震補強", "落橋防止システム", "ウォータージェット工法"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-06/79-06-0891.pdf"}, {"id": "79-cs03-0021", "y": 2024, "s": 8, "sn": "CS", "cs": "cs03", "t": "M", "th": "橋梁・構造物", "ths": ["橋梁・構造物"], "ti": "地震被害から見たパッド型ゴム支承の優位性", "au": ["宮川 直也", "井上 翔", "進藤 良則", "西 恭彦", "玉井 真一"], "af": ["(独)鉄道・運輸機構", "宮川 直也 (独)鉄道・運輸機構", "進藤 良則 (独)鉄道・運輸機構"], "kw": ["PC 桁", "橋梁", "地震", "支承構造", "損傷", "ゴム支承"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs03-0021.pdf"}, {"id": "79-cs03-0036", "y": 2024, "s": 8, "sn": "CS", "cs": "cs03", "t": "D", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "復旧・復興・施工"], "ti": "既設トラス橋の免震化補強に伴う構造課題と対策事例", "au": ["岡本 光平", "中山 健", "岩谷 祐太", "辻 浩幸"], "af": ["中央復建コンサルタンツ", "岡本 光平,", "西日本高速道路", "岩谷 祐太,"], "kw": ["鋼上路式トラス橋", "耐震補強", "支承取換", "免震構造化", "上下線連結構造", "ダンパー"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs03-0036.pdf"}, {"id": "79-cs10-0005", "y": 2024, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "斜面崩壊・土砂災害", "橋梁・構造物", "地震動・震源・断層"], "ti": "2016 年熊本地震における二俣福良渡の崩壊要因に関する一考察", "au": ["山下 恵太", "古川 愛子"], "af": ["京都大学"], "kw": ["石造アーチ橋", "二俣福良渡", "熊本地震", "被災要因", "微動計測", "有限要素解析"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs10-0005.pdf"}, {"id": "79-cs10-0030", "y": 2024, "s": 8, "sn": "CS", "cs": "cs10", "t": "D", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層"], "ti": "鋼製橋脚ベース部をロッキング構造とした耐震性向上策の振動台模型実験による基礎的検討", "au": ["廣田 鴻平", "野中 哲也", "海老澤 健正"], "af": ["名古屋工業大学", "野中哲也"], "kw": ["鋼製橋脚", "超過地震動", "浮き上がりの許容", "ロッキング挙動"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs10-0030.pdf"}, {"id": "79-cs10-0064", "y": 2024, "s": 8, "sn": "CS", "cs": "cs10", "t": "D", "th": "建物被害", "ths": ["建物被害"], "ti": "多波長SAR を組み合わせた令和6 年能登半島地震の建物被害度推定 国際航業株式会社 〇虫明成生田口智大本田謙一浅田典親今井靖晃西村智博向山栄", "au": ["虫明 成生", "田口 智大", "本田 謙一", "浅田 典親", "今井 靖晃", "西村 智博", "向山 栄"], "af": ["国際航業 ○虫明成生 田口智大 本田謙一 浅田典親 今井靖晃 西村智博 向山栄"], "kw": ["建物被害度推定", "SAR", "干渉性", "多波長", "ALOS-2", "Sentinel-1"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs10-0064.pdf"}, {"id": "79-cs10-0083", "y": 2024, "s": 8, "sn": "CS", "cs": "cs10", "t": "B", "th": "地震動・震源・断層", "ths": ["地震動・震源・断層"], "ti": "令和６年能登半島地震における地域建設業者の被災状況調査 －本社所在地で推定される震度－", "au": ["鈴木 真悠", "仲村 成貴"], "af": ["日本大学"], "kw": ["地域建設業者", "応急対応", "震度", "平成28 年熊本地震", "令和6 年能登半島地震"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs10-0083.pdf"}, {"id": "79-cs10-0091", "y": 2024, "s": 8, "sn": "CS", "cs": "cs10", "t": "A", "th": "避難・社会・生活", "ths": ["避難・社会・生活"], "ti": "機械学習手法を活用した熊本地震における道路通行止め位置推定の検討", "au": ["佐藤 慎慈", "鳥澤 一晃"], "af": ["関東学院大学"], "kw": ["地震被害予測", "道路通行止め", "機械学習", "2016 年熊本地震", "交通センサス"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs10-0091.pdf"}, {"id": "79-cs14-0041", "y": 2024, "s": 8, "sn": "CS", "cs": "cs14", "t": "B", "th": "建物被害", "ths": ["建物被害", "避難・社会・生活"], "ti": "航空レーザ測量データと航空写真を用いた地震被害建物の検出に向けた基礎検討", "au": ["江頭 彩奈", "劉 ウェン", "丸山 喜久"], "af": ["千葉大学"], "kw": ["深層学習", "畳み込みニューラルネットワーク", "熊本地震", "罹災証明", "数値表層モデル"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs14-0041.pdf"}, {"id": "79-cs14-0042", "y": 2024, "s": 8, "sn": "CS", "cs": "cs14", "t": "A", "th": "建物被害", "ths": ["建物被害", "避難・社会・生活"], "ti": "熊本地震の際の罹災証明写真を用いた建物損傷度評価に向けた物体検出モデルの構築", "au": ["秋葉 涼太", "劉 ウェン", "丸山 喜久"], "af": ["千葉大学"], "kw": ["地震", "検出", "Mask R-CNN"], "u": "http://library.jsce.or.jp/jsce/open/00035/2024/79-cs/79-cs14-0042.pdf"}, {"id": "80-04-C002581", "y": 2025, "s": 4, "sn": "土木計画学・交通工学", "cs": "", "t": "A", "th": "復旧・復興・施工", "ths": ["復旧・復興・施工"], "ti": "災害復興研究の分類軸：2016年熊本地震におけるデータ研究と実践活動事例", "au": ["円山 琢也"], "af": ["熊本大学"], "kw": ["災害復興", "政策と実践", "方法と技術"], "u": ""}, {"id": "80-06-C001380", "y": 2025, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "M", "th": "橋梁・構造物", "ths": ["橋梁・構造物", "地震動・震源・断層", "復旧・復興・施工"], "ti": "先阿蘇火山岩類 副断層部トンネル施工における調査と対策", "au": ["藤城 聡太"], "af": ["西松建設九州支社"], "kw": ["副断層", "トンネル掘削", "岩盤調査", "前方探査", "水圧管"], "u": ""}, {"id": "80-08-C003960", "y": 2025, "s": 8, "sn": "CS", "cs": "", "t": "B", "th": "建物被害", "ths": ["建物被害", "避難・社会・生活"], "ti": "航空レーザ測量データと航空写真を用いた地震被害建物の検出", "au": ["江頭 彩奈"], "af": ["千葉大学"], "kw": ["深層学習", "畳み込みニューラルネットワーク", "熊本地震", "罹災証明", "数値表層モデル"], "u": ""}, {"id": "81-03-C002199", "y": 2026, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "復旧・復興・施工"], "ti": "特別史跡熊本城跡石垣の耐震補強に関する実験的研究（その１）", "au": ["野口 真作", "八幡 吉樹", "小森 慎太郎", "大山 謙吾", "田崎 昌平", "村田", "池本 敏和"], "af": ["扇精光コンサルタンツ", "フジヤマ", "金沢大学", "前田工繊", "熊本市 文化市民局 熊本城総事務所", "文化石垣・石積擁壁補強技術協会"], "kw": ["石垣", "振動台実験", "耐震補強", "補強対策"], "u": ""}, {"id": "81-03-C003189", "y": 2026, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "復旧・復興・施工"], "ti": "特別史跡熊本城跡石垣の耐震補強に関する実験的研究（その3）", "au": ["野口 真作", "八幡 吉樹", "大山 謙吾", "田崎 昌平", "村田", "池本 敏和"], "af": ["金沢大学", "扇精光コンサルタンツ", "フジヤマ", "前田工繊", "熊本市 文化市民局 熊本城総事務所", "文化石垣・石積擁壁補強技術協会"], "kw": [], "u": ""}, {"id": "81-03-C003734", "y": 2026, "s": 3, "sn": "地盤工学", "cs": "", "t": "M", "th": "文化財・石造構造物", "ths": ["文化財・石造構造物", "復旧・復興・施工"], "ti": "特別史跡熊本城跡石垣の耐震補強に関する実験的研究（その２）", "au": ["八幡 吉樹", "野口 真作", "小森 慎太郎", "大山 謙吾", "田崎 昌平", "村田", "池本 敏和"], "af": ["フジヤマ", "扇精光コンサルタンツ", "金沢大学", "前田工繊", "熊本市 文化市民局 熊本城総事務所", "文化石垣・石積擁壁補強技術協会"], "kw": ["石垣", "振動台実験", "耐震補強", "補強対策"], "u": ""}, {"id": "81-06-C001675", "y": 2026, "s": 6, "sn": "建設マネジメント", "cs": "", "t": "A", "th": "復旧・復興・施工", "ths": ["復旧・復興・施工"], "ti": "熊本地震で被災・補修を行った風車支持構造物のひび割れ充填状況調査", "au": ["宮野 展宏", "川口 恭平", "下屋敷 覚弘"], "af": ["電源開発", "J-POWER 設計コンサルタント"], "kw": ["風車支持構造物", "ひび割れ充填補修", "コンクリート切出調査", "鉄筋腐食抑制"], "u": ""}, {"id": "81-08-C002567", "y": 2026, "s": 8, "sn": "CS", "cs": "", "t": "B", "th": "ライフライン", "ths": ["ライフライン", "地盤・液状化"], "ti": "インフラレジリエンスデザインに基づく管路―地盤系の地震被害フォーカシング", "au": ["小南 雄暉", "庄司 学"], "af": ["筑波大学"], "kw": ["インフラレジリエンスデザイン", "2016 年熊本地震", "埋設管路", "3 次元FE モデル"], "u": ""}], "years": [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026], "sections": [{"s": 1, "sn": "構造工学・地震工学・維持管理工学"}, {"s": 2, "sn": "水工学"}, {"s": 3, "sn": "地盤工学"}, {"s": 4, "sn": "土木計画学・交通工学"}, {"s": 6, "sn": "建設マネジメント"}, {"s": 7, "sn": "環境・衛生工学"}, {"s": 8, "sn": "CS"}], "themes": ["文化財・石造構造物", "斜面崩壊・土砂災害", "ライフライン", "河川・堤防・水利", "橋梁・構造物", "地盤・液状化", "地震動・震源・断層", "建物被害", "避難・社会・生活", "復旧・復興・施工", "その他"], "tierNote": {"A": "タイトルに地震名", "B": "キーワード・要旨に地震名", "M": "目視確認で関連と判断", "C": "被災地名×地震文脈語のみ（要目視）", "D": "本文にのみ言及（要目視）"}};
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const CORE = ["A", "B", "M"];
+  const conf = (y) => "第" + (y - 1945) + "回 " + y + "年";
+
+  /* 原本PDFのリンク先。fetch_pdfs.py で同梱済みなら隣の pdf/ フォルダを、
+     無ければ学会サーバーのURLを使う。 */
+  const LOCAL = window.KQ_PDF_LOCAL || null;
+  const pdfHref = (r) => (LOCAL && LOCAL[r.id]) ? "pdf/" + r.id + ".pdf" : (r.u || "");
+
+  /* 一覧に出すのは確実な tier A/B/M だけ。tier C/D は目視で非該当と判定した候補なので、
+     混ぜると「除外した論文」を並べることになる。候補の検討は candidates_review.csv 側で行う。 */
+  const ROWS = DATA.records.filter((r) => CORE.includes(r.t));
+  const TOTAL = ROWS.length;
+
+  ROWS.forEach((r) => {
+    r._hay = [r.id, r.ti, r.au.join(" "), r.af.join(" "), r.kw.join(" "), r.th, r.sn].join(" ").toLowerCase();
+  });
+
+  /* ---------- コントロールの中身を作る ---------- */
+  function fill(el, items, allLabel) {
+    el.innerHTML = '<option value="">' + allLabel + "</option>" +
+      items.map((o) => '<option value="' + esc(o.v) + '">' + esc(o.t) + "</option>").join("");
+  }
+  /* 選択肢は ROWS から作る。DATA.years などは tier C/D も含めた全件由来なので、
+     そのまま使うと結果が0件になる選択肢が混じる。 */
+  const has = (t) => ROWS.some((r) => r.t === t);
+  fill($("#kq-year"),
+       DATA.years.filter((y) => ROWS.some((r) => r.y === y)).map((y) => ({ v: y, t: conf(y) })),
+       "すべての年");
+  fill($("#kq-sec"),
+       DATA.sections.filter((s) => ROWS.some((r) => r.s === s.s))
+                    .map((s) => ({ v: s.s, t: "第" + s.s + "部門 " + s.sn })),
+       "すべての部門");
+  fill($("#kq-theme"),
+       DATA.themes.filter((t) => ROWS.some((r) => r.th === t || r.ths.includes(t)))
+                  .map((t) => ({ v: t, t: t })),
+       "すべてのテーマ");
+  fill($("#kq-tier"),
+       CORE.filter(has).map((t) => ({ v: t, t: "tier " + t + "（" + (DATA.tierNote[t] || "") + "）" })),
+       "すべての tier");
+  $("#kq-tierhelp").innerHTML = CORE.filter(has)
+    .map((k) => "<dt>tier " + k + "</dt><dd>" + esc(DATA.tierNote[k] || "") + "</dd>").join("");
+
+  /* ---------- 検索語のハイライト ---------- */
+  function hl(text, terms) {
+    let out = esc(text);
+    terms.forEach((t) => {
+      if (!t) return;
+      const re = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      out = out.replace(re, (m) => "<mark>" + m + "</mark>");
+    });
+    return out;
+  }
+
+  /* ---------- いま効いている条件（チップとクリア判定に使う） ---------- */
+  function state() {
+    return {
+      q: $("#kq-q").value.trim(),
+      year: $("#kq-year").value,
+      sec: $("#kq-sec").value,
+      theme: $("#kq-theme").value,
+      tier: $("#kq-tier").value,
+      sort: $("#kq-sort").value,
+    };
+  }
+
+  function chips(st) {
+    const out = [];
+    if (st.q) out.push(["kq-q", "検索: " + st.q]);
+    if (st.year) out.push(["kq-year", conf(Number(st.year))]);
+    if (st.sec) {
+      const s = DATA.sections.find((x) => String(x.s) === st.sec);
+      out.push(["kq-sec", "第" + st.sec + "部門" + (s ? " " + s.sn : "")]);
+    }
+    if (st.theme) out.push(["kq-theme", st.theme]);
+    if (st.tier) out.push(["kq-tier", "tier " + st.tier]);
+    $("#kq-chips").innerHTML = out.map(([id, label]) =>
+      '<button class="fchip" type="button" data-clear="' + id + '">' +
+      esc(label) + '<i aria-hidden="true">×</i><span class="sr">を解除</span></button>').join("");
+    $("#kq-reset").disabled = out.length === 0 && st.sort === "asc";
+  }
+
+  /* ---------- 描画 ---------- */
+  function render() {
+    const st = state();
+    const terms = st.q.split(/\s+/).filter(Boolean);
+    const lower = terms.map((t) => t.toLowerCase());
+
+    const rows = ROWS.filter((r) => {
+      if (st.tier && r.t !== st.tier) return false;
+      if (st.year && String(r.y) !== st.year) return false;
+      if (st.sec && String(r.s) !== st.sec) return false;
+      if (st.theme && !r.ths.includes(st.theme) && r.th !== st.theme) return false;
+      return lower.every((t) => r._hay.includes(t));
+    });
+
+    $("#kq-hit").textContent = rows.length.toLocaleString();
+    $("#kq-of").textContent = rows.length === TOTAL ? "" : "／ " + TOTAL.toLocaleString() + " 件中";
+    chips(st);
+
+    if (!rows.length) {
+      $("#kq-list").innerHTML = '<div class="empty">条件に合う論文がありません。' +
+        '検索語を短くするか、絞り込みを外してください。' +
+        '<br><button class="btn" type="button" data-clear="all">条件をクリア</button></div>';
+      return;
+    }
+
+    const byYear = new Map();
+    rows.forEach((r) => {
+      if (!byYear.has(r.y)) byYear.set(r.y, []);
+      byYear.get(r.y).push(r);
+    });
+
+    const years = [...byYear.keys()].sort((a, b) => st.sort === "desc" ? b - a : a - b);
+    let html = "";
+    years.forEach((y) => {
+      const list = byYear.get(y);
+      html += '<section><div class="yearhead"><span class="conf">' + conf(y) +
+              '</span><span class="meta">' + list.length + " 件</span></div>";
+      list.forEach((r) => {
+        const title = hl(r.ti, terms);
+        const u = pdfHref(r);
+        html += '<article class="paper"><div class="tags">' +
+          '<span class="pid">' + esc(r.id) + "</span>" +
+          '<span class="chip tier" title="' +
+            esc(DATA.tierNote[r.t] || "") + '">tier ' + r.t + "</span>" +
+          '<span class="chip theme">' + esc(r.th) + "</span>" +
+          '<span class="chip">第' + r.s + "部門 " + esc(r.sn) + (r.cs ? " / " + esc(r.cs) : "") + "</span>" +
+          (u ? '<a class="pdf" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">原本PDF ↗</a>' : "") +
+          "</div>";
+        html += '<h3 class="ti">' + (u
+          ? '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + title + "</a>"
+          : title) + "</h3>";
+        if (r.au.length) html += '<p class="au">' + hl(r.au.join("、"), terms) + "</p>";
+        if (r.af.length) html += '<p class="af">' + hl(r.af.join(" / "), terms) + "</p>";
+        if (r.kw.length) html += '<div class="kw">' + r.kw.map((k) => "<span>" + hl(k, terms) + "</span>").join("") + "</div>";
+        html += "</article>";
+      });
+      html += "</section>";
+    });
+    $("#kq-list").innerHTML = html;
+  }
+
+  /* ---------- 操作 ---------- */
+  const CONTROLS = ["#kq-q", "#kq-year", "#kq-sec", "#kq-theme", "#kq-tier", "#kq-sort"];
+  CONTROLS.forEach((s) => {
+    $(s).addEventListener("input", render);
+    $(s).addEventListener("change", render);
+  });
+
+  function clearAll() {
+    $("#kq-q").value = ""; $("#kq-year").value = ""; $("#kq-sec").value = "";
+    $("#kq-theme").value = ""; $("#kq-tier").value = ""; $("#kq-sort").value = "asc";
+    render();
+  }
+  $("#kq-reset").addEventListener("click", clearAll);
+
+  /* チップの × と、空表示のクリアボタン */
+  $("#view-papers").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-clear]");
+    if (!t) return;
+    const id = t.dataset.clear;
+    if (id === "all") { clearAll(); return; }
+    document.getElementById(id).value = "";
+    render();
+  });
+
+  /* キーボード: / で検索へ、Esc で検索語を消す */
+  document.addEventListener("keydown", (e) => {
+    const inView = !document.getElementById("view-papers").hidden;
+    if (!inView) return;
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+    if (e.key === "/" && !typing) { e.preventDefault(); $("#kq-q").focus(); }
+    else if (e.key === "Escape" && document.activeElement === $("#kq-q")) {
+      $("#kq-q").value = ""; render();
+    }
+  });
+
+  /* 年見出しの貼り付き位置に使うツールバー高さ。畳まれている間は 0 になるので更新しない */
+  const tools = $("#kq-tools");
+  function syncToolsHeight() {
+    const h = tools.getBoundingClientRect().height;
+    if (h > 0) document.documentElement.style.setProperty("--kqTB", h + "px");
+  }
+  if (window.ResizeObserver) new ResizeObserver(syncToolsHeight).observe(tools);
+  window.addEventListener("load", syncToolsHeight);
+
+  /* 初回表示時に一度だけ描画（shell.html のタブ制御が呼ぶ） */
+  window.VIEW_HOOKS = window.VIEW_HOOKS || {};
+  window.VIEW_HOOKS.papers = function () { render(); syncToolsHeight(); };
+})();
+</script>
+
+
+  <!--
+  タブ02「概要情報」の中身。
+  shell.html の VIEW_OVERVIEW マーカーの位置に差し込まれる。
+  内容: 主要数値 ＋ 2.1 論文の年次ごとの比較／2.2 部門別の比較／2.3 テーマ別の比較。
+  このファイルだけを編集すれば、他タブに影響せず概要情報を変えられる。
+
+  ・表題と要約文はアプリバーの見出しと重複するため置かない。
+  ・tier（抽出の層別）の説明はタブ01の凡例にあるため、ここでは繰り返さない。
+  ・見出しは中立なラベル。所見の文章は置かず、表とキャプションだけを見せる。
+
+  【重要】3つの表は直書きせず、build_report.py が corpus から数え直した集計を
+  差し込んで下の script が組み立てる。corpus が更新されても数値がずれない。
+  表の見た目を変えるときは下の render 関数を、数え方を変えるときは
+  build_report.py の build_overview_agg() を直す。
+-->
+<style>
+  #view-overview .facts { margin-top: 1.6rem; display: grid; gap: 1px;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    background: var(--rule); border: 1px solid var(--rule); }
+  #view-overview .fact { background: var(--ground); padding: 0.95rem 1.1rem 1.05rem; }
+  #view-overview .fact dt { font-family: var(--mono); font-size: 0.68rem;
+                            letter-spacing: 0.1em; color: var(--ink-faint); }
+  #view-overview .fact dd { font-family: var(--serif); font-size: 1.55rem; line-height: 1.2;
+                            margin-top: 0.4rem; font-variant-numeric: tabular-nums; }
+  #view-overview .fact dd small { font-family: var(--sans); font-size: 0.78rem;
+                                  color: var(--ink-soft); margin-left: 0.25em; }
+
+  /* ---- 表の最小幅（横スクロールの基準） ---- */
+  #view-overview .t-sec { min-width: 47rem; }
+  #view-overview .t-sec td:first-child { white-space: nowrap; }
+  #view-overview .t-tl { min-width: 34rem; }
+  #view-overview .t-theme { min-width: 40rem; }
+  #view-overview .t-tl td, #view-overview .t-theme td { vertical-align: middle; }
+
+  /* ---- 2.1 年次ごとの比較（棒） ---- */
+  #view-overview .t-tl .conf { font-family: var(--mono); font-size: 0.82rem;
+                               color: var(--ink-soft); white-space: nowrap; }
+  #view-overview .t-tl .yr { font-family: var(--serif); font-size: 1.02rem;
+                             font-variant-numeric: tabular-nums; }
+  #view-overview .t-tl .lag { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-faint);
+                              font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #view-overview .t-tl .barcell { width: 55%; }
+  #view-overview .t-tl .n { font-family: var(--mono); font-size: 0.92rem;
+    font-variant-numeric: tabular-nums; text-align: right; width: 3.5rem; }
+  /* 棒の幅は常に確定値。伸びるアニメーションは付けない
+     （フレーム描画が来ない環境で幅0のまま残り、データが見えなくなるため） */
+  #view-overview .bar { height: 0.72rem; background: var(--accent); }
+  #view-overview .peak .bar { background: var(--ochre); }
+  #view-overview .peak .n, #view-overview .peak .yr { color: var(--ochre); }
+  #view-overview .gap td { background: var(--surface); }
+  #view-overview .gap .zero { font-family: var(--mono); font-size: 0.76rem; color: var(--rust);
+    border-top: 1px dashed var(--rust); padding-top: 0.3rem; display: block; }
+  #view-overview .gap .n { color: var(--rust); }
+
+  /* ---- 2.3 テーマ別スパークライン ---- */
+  #view-overview .t-theme .name { font-size: 0.95rem; white-space: nowrap; }
+  #view-overview .t-theme .tot { font-family: var(--mono); font-variant-numeric: tabular-nums;
+                                 text-align: right; width: 3.5rem; }
+  #view-overview .t-theme .spark { width: 46%; min-width: 8rem; }
+  #view-overview .t-theme .shape { font-size: 0.82rem; color: var(--ink-soft); white-space: nowrap; }
+  #view-overview .t-theme svg { display: block; width: 100%; height: 26px; }
+  #view-overview .t-theme polyline { fill: none; stroke: var(--accent); stroke-width: 1.4;
+                                     vector-effect: non-scaling-stroke; }
+  #view-overview .t-theme circle { fill: var(--ochre); }
+  #view-overview .t-theme .revive polyline { stroke: var(--ochre); }
+</style>
+
+<div id="view-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0" hidden>
+  <div class="viewhead">
+    <span class="vh-n">VIEW 02</span>
+    <span class="vh-t">概要情報</span>
+    <span class="vh-d">年次・部門・テーマの3つの切り口で比較する</span>
+  </div>
+
+  <dl class="facts">
+    <div class="fact"><dt>走査した論文</dt><dd>172,974<small>件</small></dd></div>
+    <div class="fact"><dt>抽出（関連）</dt><dd>216<small>件</small></dd></div>
+    <div class="fact"><dt>対象大会</dt><dd id="ov-span">–</dd></div>
+    <div class="fact"><dt>最多年</dt><dd id="ov-peak">–</dd></div>
+  </dl>
+
+  <!-- ============ 2.1 ============ -->
+  <div class="blk">
+    <div class="blk-head">
+      <span class="eyebrow">2.1</span>
+      <h2>論文の年次ごとの比較</h2>
+    </div>
+    <div class="scroller">
+      <table class="t-tl">
+        <thead><tr><th>大会</th><th>年</th><th>経過</th><th>論文数</th><th class="n">件</th></tr></thead>
+        <tbody id="ov-year"></tbody>
+        <caption id="ov-year-cap"></caption>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============ 2.2 ============ -->
+  <div class="blk">
+    <div class="blk-head">
+      <span class="eyebrow">2.2</span>
+      <h2>部門別の比較</h2>
+    </div>
+    <div class="scroller">
+      <table class="t-sec">
+        <thead id="ov-sec-head"></thead>
+        <tbody id="ov-sec"></tbody>
+        <caption>件数の多い部門から並べている。第8部門のCSは共通セッション。</caption>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============ 2.3 ============ -->
+  <div class="blk">
+    <div class="blk-head">
+      <span class="eyebrow">2.3</span>
+      <h2>テーマ別の比較</h2>
+    </div>
+    <div class="scroller">
+      <table class="t-theme">
+        <thead id="ov-theme-head"></thead>
+        <tbody id="ov-theme"></tbody>
+        <caption id="ov-theme-cap"></caption>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+/* タブ02の3つの表を、build_report.py が数え直した集計から組み立てる。
+   直書きしないので corpus が更新されても数値がずれない。 */
+(function () {
+  const AGG = {"quakeYear": 2016, "years": [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026], "byYear": [{"y": 2016, "conf": 71, "n": 0}, {"y": 2017, "conf": 72, "n": 80}, {"y": 2018, "conf": 73, "n": 54}, {"y": 2019, "conf": 74, "n": 26}, {"y": 2020, "conf": 75, "n": 15}, {"y": 2021, "conf": 76, "n": 15}, {"y": 2022, "conf": 77, "n": 7}, {"y": 2023, "conf": 78, "n": 4}, {"y": 2024, "conf": 79, "n": 7}, {"y": 2025, "conf": 80, "n": 3}, {"y": 2026, "conf": 81, "n": 5}], "bySection": [{"s": 1, "sn": "構造工学・地震工学・維持管理工学", "n": [0, 31, 16, 5, 1, 1, 1, 0, 1, 0, 0], "total": 56}, {"s": 2, "sn": "水工学", "n": [0, 5, 0, 0, 0, 1, 0, 0, 0, 0, 0], "total": 6}, {"s": 3, "sn": "地盤工学", "n": [0, 27, 9, 5, 5, 1, 0, 0, 0, 0, 3], "total": 50}, {"s": 4, "sn": "土木計画学・交通工学", "n": [0, 5, 5, 0, 0, 0, 1, 1, 0, 1, 0], "total": 13}, {"s": 6, "sn": "建設マネジメント", "n": [0, 11, 6, 2, 4, 2, 0, 0, 0, 1, 1], "total": 27}, {"s": 7, "sn": "環境・衛生工学", "n": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], "total": 1}, {"s": 8, "sn": "CS", "n": [0, 1, 17, 14, 5, 10, 5, 3, 6, 1, 1], "total": 63}], "byTheme": [{"theme": "文化財・石造構造物", "n": [0, 4, 8, 1, 0, 2, 1, 0, 1, 0, 3], "total": 20}, {"theme": "斜面崩壊・土砂災害", "n": [0, 29, 12, 7, 2, 3, 1, 0, 1, 0, 0], "total": 55}, {"theme": "ライフライン", "n": [0, 5, 7, 6, 3, 4, 0, 2, 0, 0, 1], "total": 28}, {"theme": "河川・堤防・水利", "n": [0, 8, 2, 1, 1, 3, 0, 0, 0, 0, 0], "total": 15}, {"theme": "橋梁・構造物", "n": [0, 31, 17, 12, 3, 3, 4, 2, 3, 1, 0], "total": 76}, {"theme": "地盤・液状化", "n": [0, 29, 17, 13, 2, 2, 1, 1, 0, 0, 1], "total": 66}, {"theme": "地震動・震源・断層", "n": [0, 23, 13, 6, 1, 8, 3, 2, 2, 1, 0], "total": 59}, {"theme": "建物被害", "n": [0, 8, 2, 0, 2, 1, 1, 0, 2, 1, 0], "total": 17}, {"theme": "避難・社会・生活", "n": [0, 11, 6, 1, 2, 0, 2, 1, 3, 1, 0], "total": 27}, {"theme": "復旧・復興・施工", "n": [0, 16, 9, 2, 7, 1, 0, 1, 0, 2, 4], "total": 42}, {"theme": "その他", "n": [0, 2, 0, 0, 1, 1, 1, 0, 0, 0, 0], "total": 5}]};
+  if (!AGG) return;
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const $ = (id) => document.getElementById(id);
+  const years = AGG.years;
+  const Q = AGG.quakeYear;
+
+  /* ---------- 主要数値 ---------- */
+  const peak = AGG.byYear.reduce((a, b) => (b.n > a.n ? b : a), AGG.byYear[0]);
+  const first = AGG.byYear[0], last = AGG.byYear[AGG.byYear.length - 1];
+  $("ov-span").innerHTML = "第" + first.conf + "–" + last.conf + "<small>回</small>";
+  $("ov-peak").innerHTML = peak.y + "<small>年・" + peak.n + "件</small>";
+
+  /* ---------- 2.1 年次ごとの比較 ---------- */
+  $("ov-year").innerHTML = AGG.byYear.map(function (r) {
+    const lag = r.y - Q;
+    const lagTxt = lag === 0 ? "±0年" : "＋" + lag + "年";
+    const cls = r.n === 0 ? "gap" : (r === peak ? "peak" : "");
+    const cell = r.n === 0
+      ? '<span class="zero">原稿締切が本震（4月16日）より前</span>'
+      : '<div class="bar" style="width:' + (r.n / peak.n * 100).toFixed(1) + '%"></div>';
+    return '<tr class="' + cls + '">' +
+      '<td class="conf">第' + r.conf + "回</td>" +
+      '<td class="yr">' + r.y + "</td>" +
+      '<td class="lag">' + lagTxt + "</td>" +
+      '<td class="barcell">' + cell + "</td>" +
+      '<td class="n">' + r.n + "</td></tr>";
+  }).join("");
+  $("ov-year-cap").textContent =
+    "棒の長さは" + peak.y + "年（" + peak.n + "件）を100%とした相対値。" +
+    "第" + last.conf + "回（" + last.y + "年）は令和8年熊本地震の発生前に投稿された論文である。";
+
+  /* ---------- 2.2 部門別の比較 ---------- */
+  /* 件数が少ない後半年はまとめて1列にする（横幅を抑えるため） */
+  const SPLIT = 5;                       /* 先頭から5年分は年ごと、それ以降は合算 */
+  const headYears = years.slice(1, 1 + SPLIT);   /* 先頭の2016年は全部門0なので出さない */
+  const tailYears = years.slice(1 + SPLIT);
+  const tailLabel = tailYears.length
+    ? String(tailYears[0]).slice(2) + "–" + String(tailYears[tailYears.length - 1]).slice(2)
+    : "";
+  const idx = (y) => years.indexOf(y);
+  const sumOf = (arr, ys) => ys.reduce((a, y) => a + arr[idx(y)], 0);
+
+  $("ov-sec-head").innerHTML = "<tr><th>部門</th>" +
+    headYears.map((y) => '<th class="r">' + y + "</th>").join("") +
+    (tailLabel ? '<th class="r">' + tailLabel + "</th>" : "") +
+    '<th class="r">計</th></tr>';
+
+  $("ov-sec").innerHTML = AGG.bySection.slice()
+    .sort((a, b) => b.total - a.total)
+    .map(function (r) {
+      const label = "第" + r.s + "部門 " + r.sn;
+      return "<tr><td>" + esc(label) + "</td>" +
+        headYears.map((y) => '<td class="r">' + r.n[idx(y)] + "</td>").join("") +
+        (tailLabel ? '<td class="r">' + sumOf(r.n, tailYears) + "</td>" : "") +
+        '<td class="r">' + r.total + "</td></tr>";
+    }).join("");
+
+  /* ---------- 2.3 テーマ別の比較 ---------- */
+  const tYears = years.slice(1);         /* 2016年は0件なのでスパークラインから外す */
+  const W = 100, H = 24, PAD = 2;
+
+  function spark(counts, max) {
+    const pts = counts.map(function (v, i) {
+      const x = (i / Math.max(counts.length - 1, 1)) * W;
+      const y = (H - PAD) - (max ? v / max : 0) * (H - PAD * 2);
+      return x.toFixed(1) + "," + y.toFixed(1);
+    });
+    const top = counts.indexOf(max);
+    const tx = (top / Math.max(counts.length - 1, 1)) * W;
+    const ty = (H - PAD) - (H - PAD * 2);
+    return '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" ' +
+      'aria-label="' + tYears[top] + "年が最大で" + max + '件">' +
+      '<polyline points="' + pts.join(" ") + '"/>' +
+      '<circle cx="' + tx.toFixed(1) + '" cy="' + ty.toFixed(1) + '" r="1.6"/></svg>';
+  }
+
+  /* 最大年が終盤にあるテーマは「戻ってきた」ものとして色を変える */
+  function shapeLabel(counts, max) {
+    const top = counts.indexOf(max);
+    const lateSum = counts.slice(-3).reduce((a, b) => a + b, 0);
+    const total = counts.reduce((a, b) => a + b, 0);
+    if (top >= counts.length - 3) return { cls: "revive", txt: "終盤に最大" };
+    if (lateSum / (total || 1) >= 0.15) return { cls: "revive", txt: "終盤に再増加" };
+    if (top === 0) return { cls: "", txt: "初動型" };
+    return { cls: "", txt: "遅発型（" + tYears[top] + "年が最大）" };
+  }
+
+  $("ov-theme-head").innerHTML = "<tr><th>テーマ</th><th class=\"r\">計</th>" +
+    "<th>" + tYears[0] + " ―――――――――― " + tYears[tYears.length - 1] + "</th><th>形</th></tr>";
+
+  $("ov-theme").innerHTML = AGG.byTheme.slice()
+    .sort((a, b) => b.total - a.total)
+    .map(function (r) {
+      const counts = tYears.map((y) => r.n[idx(y)]);
+      const max = Math.max.apply(null, counts);
+      const sh = shapeLabel(counts, max);
+      return '<tr class="' + sh.cls + '">' +
+        '<td class="name">' + esc(r.theme) + "</td>" +
+        '<td class="tot">' + r.total + "</td>" +
+        '<td class="spark">' + spark(counts, max) + "</td>" +
+        '<td class="shape">' + sh.txt + "</td></tr>";
+    }).join("");
+
+  $("ov-theme-cap").textContent =
+    "多重ラベル分類（1論文が複数テーマに属するため、計の合計は論文数と一致しない）。" +
+    "折れ線は各テーマの最大値で正規化した形状比較であり、テーマ間で高さは比べられない。点は最大年。";
+})();
+</script>
+
+
+  <!--
+  タブ03「応急対応・復旧復興への示唆」の中身。
+  shell.html の VIEW_INSIGHTS マーカーの位置に差し込まれる。
+  内容: 3.1 時間軸31項目（5フェーズ。第1フェーズはA/Bの2グループ）／
+        3.2 今回確かめるべき5点。
+  このファイルだけを編集すれば、他タブに影響せず示唆を変えられる。
+  カード1枚 = <article class="card"> で、見出し・論文が示したこと（.said）・
+  対応（実務）への示唆（.do）の3段構成。追加・削除はカード単位で行う。
+-->
+<style>
+  /* ---- カードグリッド ---- */
+  #view-insights .cards { display: grid; gap: 1px; background: var(--rule);
+                          border: 1px solid var(--rule); }
+  @media (min-width: 62rem) { #view-insights .cards { grid-template-columns: 1fr 1fr; } }
+  #view-insights .card { background: var(--ground); padding: 1.35rem 1.5rem 1.5rem;
+                         display: flex; flex-direction: column; gap: 0.8rem; }
+  #view-insights .card .k { font-family: var(--mono); font-size: 0.71rem;
+                            letter-spacing: 0.1em; color: var(--ink-faint); }
+  #view-insights .card h3 { font-family: var(--serif); font-size: 1.1rem; font-weight: 700;
+                            line-height: 1.55; margin: 0; text-wrap: pretty; }
+  #view-insights .card p { max-width: none; font-size: 0.92rem; margin: 0; }
+  #view-insights .said { font-size: 0.88rem; color: var(--ink-soft); padding-left: 0.95rem;
+    border-left: 2px solid var(--rule); display: flex; flex-direction: column; gap: 0.5rem; }
+  #view-insights .said p { font-size: 0.88rem; }
+  #view-insights .cite { font-family: var(--mono); font-size: 0.73rem; color: var(--ink-faint);
+                         display: block; margin-top: 0.15rem; }
+  #view-insights .do { margin-top: auto; background: var(--ochre-dim);
+    border-top: 2px solid var(--ochre); padding: 0.8rem 0.95rem; font-size: 0.9rem; }
+  #view-insights .do b { font-family: var(--mono); font-size: 0.69rem; letter-spacing: 0.1em;
+                         color: var(--ochre); display: block; margin-bottom: 0.25rem; }
+
+  /* =========================================================================
+     見出しの階層。上から順に弱くなるよう、大きさ・罫線・色を段階付けている。
+       第1階層 章       3.0 / 3.1 …      太い縦バー＋濃い罫線・最大の文字
+       第2階層 フェーズ 発災直後 〜 1週間  細い罫線＋アクセント色の時期ラベル
+       第3階層 グループ A どこが…         罫線なし・小さめ
+       第4階層 カード   個々の示唆         枠で囲まれているので階層が自明
+     章より下位のものを強くすると階層が逆転して読みづらくなる。順序を崩さないこと。
+     ========================================================================= */
+
+  /* ---- 第1階層: 章の見出し（3.0 / 3.1 …） ---- */
+  #view-insights .blk { padding-top: clamp(3.25rem, 7.5vw, 5.25rem); }
+  #view-insights .blk > .blk-head {
+    gap: 0.45rem; margin-bottom: 1.9rem;
+    padding: 0.55rem 0 0.8rem 1rem;
+    border-left: 4px solid var(--accent);
+    border-bottom: 2px solid var(--ink); }
+  /* 「3.1 / 実務への示唆」を章タイトルとして見せる（細字ラベルから昇格） */
+  #view-insights .blk > .blk-head .eyebrow {
+    font-family: var(--serif); font-weight: 700;
+    font-size: clamp(1.35rem, 1.05rem + 1.4vw, 2rem);
+    line-height: 1.35; letter-spacing: 0.02em;
+    text-transform: none; color: var(--ink); }
+  /* 章見出しに続く1文は補助説明に降格（かつては主張型の大見出しだった） */
+  #view-insights .blk > .blk-head h2 {
+    font-family: var(--sans); font-weight: 400; font-size: 0.95rem;
+    line-height: 1.75; color: var(--ink-soft); max-width: var(--measure); }
+
+  /* ---- 第2階層: フェーズ見出し ---- */
+  #view-insights .phase { padding-top: clamp(2.25rem, 5vw, 3.25rem); }
+  /* 章見出しの直後の最初のフェーズは、章側の下余白で足りるので詰める */
+  #view-insights .blk + .phase { padding-top: 0.25rem; }
+  #view-insights .phase-head { display: flex; flex-direction: column; gap: 0.4rem;
+    padding-bottom: 0.6rem; border-bottom: 1px solid var(--rule); margin-bottom: 1.5rem; }
+  #view-insights .phase-head .t { font-family: var(--mono); font-size: 0.72rem;
+    letter-spacing: 0.12em; color: var(--accent); font-variant-numeric: tabular-nums;
+    background: var(--accent-dim); border-radius: 2px;
+    padding: 0.1rem 0.45rem; align-self: flex-start; }
+  /* カード見出し(1.1rem)より一段上に置く。詰めると階層が読めなくなる */
+  #view-insights .phase-head h2 { font-family: var(--serif); font-weight: 700; line-height: 1.45;
+    font-size: 1.4rem; text-wrap: balance; }
+  #view-insights .phase-head .sub { font-size: 0.9rem; color: var(--ink-soft);
+                                    max-width: var(--measure); }
+
+  /* ---- 第3階層: フェーズ内のグループ見出し ---- */
+  #view-insights .group-label { display: flex; align-items: baseline; gap: 0.7rem;
+                                margin: 1.75rem 0 1rem; }
+  #view-insights .group-label .gl-k { font-family: var(--mono); font-size: 0.68rem;
+                                      letter-spacing: 0.14em; color: var(--accent); }
+  #view-insights .group-label .gl-t { font-family: var(--serif); font-size: 1rem;
+                                      font-weight: 700; color: var(--ink-soft); }
+  /* フェーズ見出しの直下は、見出し側の下余白だけで足りる */
+  #view-insights .phase-head + .group-label { margin-top: 0; }
+
+  /* ---- 3.2 チェックリスト ---- */
+  #view-insights .checks { max-width: var(--measure); margin-top: 1.2rem; display: flex;
+    flex-direction: column; gap: 0.9rem; list-style: none; padding-left: 0; }
+  #view-insights .checks li { display: grid; grid-template-columns: 1.9rem 1fr;
+                              gap: 0.6rem; align-items: start; }
+  #view-insights .checks .mk { font-family: var(--mono); font-size: 0.75rem;
+                               color: var(--accent); padding-top: 0.42em; }
+  #view-insights .checks p { max-width: none; font-size: 0.95rem; }
+
+  /* ---- 引用の論文IDを原本PDFへのリンクにする（下の script で生成） ---- */
+  #view-insights .cite a, #view-insights .src a {
+    color: var(--ink-soft); text-decoration: none;
+    border-bottom: 1px dotted var(--ink-faint); }
+  #view-insights .cite a:hover, #view-insights .src a:hover {
+    color: var(--accent); border-bottom-color: var(--accent); }
+  /* URLが未収録の論文（2025年以降）はリンクにできないので破線で区別する */
+  #view-insights .nolink { border-bottom: 1px dashed var(--rule); cursor: help; }
+</style>
+
+<div id="view-insights" role="tabpanel" aria-labelledby="tab-insights" tabindex="0" hidden>
+  <div class="viewhead">
+    <span class="vh-n">VIEW 03</span>
+    <span class="vh-t">応急対応・復旧復興への示唆</span>
+    <span class="vh-d">時間軸31項目 ／ 確かめるべき5点</span>
+  </div>
+
+  <!-- ============ 3.0 ============ -->
+  <div class="blk">
+    <div class="blk-head">
+      <span class="eyebrow">3.0 / 概要</span>
+      <h2>論文本文から、令和8年熊本地震の対応に資する知見を抽出</h2>
+    </div>
+    <p>
+      関連論文の本文から結論・考察にあたる記述を拾い出し、被害の読み方から
+      応急対応・復旧・復興の実務に関わるものまで、<strong>31項目</strong>に整理して時間軸に沿って並べた。
+    </p>
+    <p>
+      論文には「間に合わなかったこと」「制度が追いつかなかったこと」も明記されており、
+      それらも手を加えずそのまま載せている。
+    </p>
+    <p>
+      各カードは2段構成とした。「論文が示したこと」は原文の主張の要約で、末尾に論文IDを添えている。
+      「対応（実務）への示唆」は、<strong>その内容を踏まえた考察であり、根拠のない推測ではない</strong>。
+    </p>
+  </div>
+
+  <!-- ============ 3.1 ============ -->
+  <div class="blk">
+    <div class="blk-head">
+      <span class="eyebrow">3.1 / 実務への示唆</span>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="t">発災直後 〜 1週間</span>
+      <h2>被害把握と二次災害の防止</h2>
+      <p class="sub">なぜ壊れたのかを確認する視点と、人を入れずに測る段取り。この段階の論文はその両方を残している。</p>
+    </div>
+
+    <div class="group-label">
+      <span class="gl-k">A</span>
+      <span class="gl-t">なぜ壊れたのかを確認する</span>
+    </div>
+    <div class="cards">
+
+      <article class="card">
+        <span class="k">01 / 二度打ち</span>
+        <h3>前震で残った箇所が、本震で落ちる</h3>
+        <div class="said">
+          <p>熊本城石垣の再現解析では、短期間に2度の大地震を受けると、1回目で崩壊しなかった箇所も2回目以降に崩壊する可能性が大きい。
+            <span class="cite">72-03-0240 平成28年熊本地震における熊本城の被災築石構造物に関する研究</span></p>
+          <p>液状化帯の範囲は前震後から本震後に拡大した（空中写真）。繰返しねじりせん断試験でも「前震＋本震」で液状化に至る応力比が下がり、累積で液状化しやすくなる。
+            <span class="cite">73-cs12-0041 ／ 72-03-0252</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          初回の地震で「無被害」と判定した構造物・斜面・宅地を安全側の実績として扱わない。
+          前震後の点検記録は、次の強震動に対する残存耐力の保証ではない。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">02 / 地表断層変位</span>
+        <h3>断層の近傍と交差角が管路被害の当たり所</h3>
+        <div class="said">
+          <p>通信管路の被災率は、地表地震断層の近傍で相対的に高く、断層との交差角が大きいほど上がる。
+            <span class="cite">75-cs10-0029 地表地震断層に着目した熊本地震における通信管路被災分析</span></p>
+          <p>上下水道は断層変位がある大きさを超えると被害が顕在化する。下水道の方が上水道より脆弱。
+            <span class="cite">76-cs10-0005 ／ 78-cs10-0048</span></p>
+          <p>ただし益城町の管路被害のうち断層変位起因はごく一部で、大半は強震動起因だった。
+            <span class="cite">73-cs12-0017 益城町における断層を横断する管路の交差角と被害との関係</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          断層トレース±200mと管路の交差角を最優先で地図に重ねる。
+          ただし件数の主体は強震動起因で、断層帯だけを見ると全体量を取りこぼす。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">03 / 火山灰質土</span>
+        <h3>黒ボクと軽石は、既存の判定式に乗らない</h3>
+        <div class="said">
+          <p>造成宅地の滑動崩落は、繰返し荷重で黒ボクの団粒構造が損傷し、擁壁背面のせん断強度が低下したことが要因と推定された。
+            <span class="cite">74-03-0205 熊本地震により滑動崩落被害が発生した造成宅地の被災要因の検討(その1)</span></p>
+          <p>益城町の宅地盛土は過剰間隙水圧の上昇で不安定化に至る。草千里ヶ浜降下軽石は繰返しせん断を受けると安全率が1を下回る。
+            <span class="cite">73-03-0312 ／ 72-03-0147</span></p>
+          <p>火山灰性粘性土の初期せん断剛性は従来の提案式のいずれでも説明できず、この土質固有の式が必要かもしれない。
+            <span class="cite">72-03-0253 熊本地震における家屋被害に関わったと思われる火山灰性粘性土の動的変形特性</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          一般砂を前提とした液状化判定・変形予測をそのまま当てない。
+          造成宅地の被害は「擁壁の転倒」ではなく「背面地盤の強度低下」として診る。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">04 / 表層地盤</span>
+        <h3>被害集中域は数十mスケールの表層構造で決まる</h3>
+        <div class="said">
+          <p>益城町の被害集中は、表層凝灰質土の非線形増幅特性の影響が大きい。本震直後の速度構造探査ではP波・S波速度がともに低下し、浅部ほど低下が大きかった。
+            <span class="cite">73-cs12-0048 ／ 72-01-0442</span></p>
+          <p>数十mしか離れていない2本のボーリングで地層分布が大きく異なった例がある。卓越周波数が低い地区で建物被害が大きい傾向も出た。
+            <span class="cite">73-03-0331 ／ 72-03-0236</span></p>
+          <p>常時微動H/Vスペクトル比による地震動推定は複数の論文で有効性が示され、余震観測を含む簡易計測が成果を上げた。
+            <span class="cite">72-01-0384 ／ 73-cs12-0052 ／ 76-cs10-0011</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          震度分布だけでは被害集中域を説明できない。既存ボーリングの外挿は危険。
+          面を安価に押さえられる常時微動観測を初期段階から入れる。</div>
+      </article>
+    </div>
+
+    <div class="group-label">
+      <span class="gl-k">B</span>
+      <span class="gl-t">人を入れずに測り、二次災害を止める</span>
+    </div>
+    <div class="cards">
+
+      <article class="card">
+        <span class="k">05 / 斜面の危険度判定</span>
+        <h3>亀裂を全数記録して、危険度でブロックに割る</h3>
+        <div class="said">
+          <p>阿蘇大橋地区では、崩壊斜面周辺の全亀裂をGPSロガーで始点・終点まで取り、開口幅・落差・方向を記録した。開口幅と落差が大きいほど危険度を高くし、滑落崖からの距離も加味して不安定ブロックを6区分。変位は1m程度が多く、2〜3mを超える亀裂は滑落崖を取り囲むように分布した。
+            <span class="cite">72-03-0166 ／ 72-03-0168</span></p>
+          <p>ただし亀裂の規模や性状は必ずしも今後の崩壊に直結せず、一部を除いて沈静化に向かっていた。
+            <span class="cite">72-03-0167 阿蘇大橋地区の斜面崩壊における緊急砂防対策について2</span></p>
+          <p>崩壊危険箇所の評価には航空レーザ（LP）の地形解析と地質解析の双方が有効。壊れたのは凸型斜面・遷急線付近・急勾配・高標高部という既知の地形特徴の箇所だった。
+            <span class="cite">72-03-0171</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          亀裂の「規模」だけで危険と決めない。位置（滑落崖からの距離）と時間変化を必ず取る。
+          LP・UAV・高密度弾性波探査を組み合わせれば掘削下端まで設計できる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">06 / 計測インフラ</span>
+        <h3>電源も通信線も無い前提の計測機材を持つ</h3>
+        <div class="said">
+          <p>橋梁のゴム支承特性を余震応答から同定した研究は、乾電池駆動で外部電源も通信ラインも要らないスタンドアロン無線センサを使い、地震後間もない時期に11ノードの簡易計測を実現した。
+            <span class="cite">72-01-0379 熊本地震の余震応答計測を利用したゴム支承特性の同定</span></p>
+          <p>常時微動下では支承の剛性・減衰の評価が難しいため、余震という「入力」が得られる時期にしか取れないデータがある。
+            <span class="cite">72-01-0379</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          余震期間は、平時には得られない実応答が取れる唯一の窓である。
+          自立電源・無線の簡易センサをすぐ出せるかが、後の解析の質を決める。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">07 / 見えない被害</span>
+        <h3>基礎杭の損傷は非破壊で概ね拾える</h3>
+        <div class="said">
+          <p>高周波衝撃弾性波法による基礎杭調査では、損傷の程度・形態が異なるケースでそれぞれ概ね損傷を検知できた。反射波の深度は実際の損傷位置とほぼ一致した。
+            <span class="cite">72-06-0946 高周波衝撃弾性波法を用いた熊本地震被害基礎杭調査精度について</span></p>
+          <p>ただし反射波だけでは破壊形態の把握には不十分で、データの蓄積と検証が必要。
+            <span class="cite">72-06-0946</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          上部構造が健全でも杭が損傷している可能性は非破壊で一次判定できる。
+          ただし「損傷の有無」までで、「どう壊れたか」は掘らないと分からない。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">08 / 監視の一元化</span>
+        <h3>計測データの窓口をばらばらにしない</h3>
+        <div class="said">
+          <p>阿蘇大橋地区の監視・計測担当は、緊急対応だったため当初は計測機器のメーカーごとに異なるWebページでデータを確認するしかなかった。地震当初からシステムを投入できる体制整備が必要だと結んでいる。
+            <span class="cite">72-06-0510 阿蘇大橋地区斜面防災対策工事の取組み（その8）― 監視および計測</span></p>
+          <p>斜面の安定性は調査結果と動態観測を併せて評価する。気象と施工進捗で状況が刻々変わるため、観測方法と配置はその都度見直す。
+            <span class="cite">72-06-0504 ／ 72-06-0510</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          警報の一元管理は初日から立てる。10年前に「今後の課題」と書かれた宿題であり、
+          技術ではなく段取りの問題として片付けられる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">09 / 交通機能の停止</span>
+        <h3>止まる理由は壊れたからではなく、確認するから</h3>
+        <div class="said">
+          <p>鉄道の運休期間を震災間で比較した研究では、多くの区間で物理的な被害はなく、安全確認の点検実施が運休の主因だった。
+            <span class="cite">76-cs10-0045 地震時における鉄道運休期間の予測と震災間比較</span></p>
+          <p>高速道路でも、計測震度が不明な区間や施設制御が不能になった区間に追加の通行止めが出た。全線を3ブロックに分けて規制を判断した例もある。
+            <span class="cite">74-cs12-0082</span></p>
+          <p>通行止め位置は交通センサスと機械学習で事前推定が試みられ、2016年熊本地震の通行止めデータが学習の元になっている。
+            <span class="cite">79-cs10-0091</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          機能停止の長さは被害量ではなく点検の段取りで決まる。
+          点検班の投入計画と規制の分割単位が、そのまま復旧見込みの発表内容になる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">10 / 救助と避難の実態</span>
+        <h3>避難者数は建物被害では決まらない</h3>
+        <div class="said">
+          <p>避難理由は「自宅を危険と判断した」67.0%と「余震が続くと思った」66.5%がほぼ同数、「停電や断水で自宅での生活が不安」が35.5%。避難者数の推移は短期には余震とライフライン途絶、長期には仮設・みなし仮設の整備状況で決まる。みなし仮設の戸数は仮設住宅を大きく上回り、支援の主力だった。
+            <span class="cite">72-01-0103 2016年熊本地震における避難者数推移への影響要因に関する考察</span></p>
+          <p>県地域防災計画の最大避難者数の評価式に実被害を代入すると258,673人で、実績と大きく開いた。評価式の見直しが必要。
+            <span class="cite">72-01-0071</span></p>
+          <p>感染症対策を前提にすると避難所は収容超過に陥るが、体育館に加えて校舎を使い車中避難を織り込むと大幅に改善する。倒壊家屋からの救助で住民が安全に協力できる範囲は「進入に破壊が伴わない現場」「要救助者が圧迫を受けていない現場」。
+            <span class="cite">77-04-0116 ／ 73-cs12-0010</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          避難者数の見積りは余震の続き方とライフライン復旧速度で置く。
+          収容力の確保先は体育館だけでなく校舎と車中避難まで含めて数える。</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="t">1週間後 〜 3ヶ月後</span>
+      <h2>人を入れられない場所での作業</h2>
+      <p class="sub">阿蘇大橋地区の一連（その1〜8＋実験報告）が2017年の最大クラスタで、この段階の教科書になっている。</p>
+    </div>
+    <div class="cards">
+
+      <article class="card">
+        <span class="k">11 / 立ち上げの順序</span>
+        <h3>「斜面下部の有人施工着手」をマイルストーンに置く</h3>
+        <div class="said">
+          <p>阿蘇大橋地区では、斜面下部での有人施工着手のための環境整備が喫緊の課題で、頭部のラウンディング（排土）完了後の有人化着手を当面の目標に据えた。そのためには崩壊地上方の滑落崖周辺に残る不安定土砂の除去が必要とされた。
+            <span class="cite">72-03-0167 ／ 72-03-0170</span></p>
+          <p>頭部の滑落崖周辺は極めて急勾配で黒ボクがオーバーハングし、亀裂も多く岩屑堆積物が不安定で落石危険性が高い。ラウンディング施工時の落石をモニタリングし、落下軌跡を確認した。
+            <span class="cite">72-06-0509 頭部排土工の設計と施工</span></p>
+          <p>落石解析では、単体で落ちる場合より落石同士が衝突すると跳躍高が高くなる傾向が出た。防護工は落石対策便覧の適用範囲から、高エネルギー吸収型の柵／網・土留盛土工・ロックシェッドを候補にした。
+            <span class="cite">72-03-0169</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          工程の目標は「対策完了」ではなく「人が入れる状態」に置く。
+          落石解析は単体落下でなく群落下で評価する。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">12 / 重機の投入</span>
+        <h3>道路が作れないなら、分解して空輸する</h3>
+        <div class="said">
+          <p>比高差300mの崩壊地頭部へアクセス道路を建設すると時間がかかり過ぎるため、単体搬送できる0.1m³級ミニバックホウと資機材を先行空輸し、ヘリポートを造成した。分解組立型バックホウの活用マニュアル素案には、カニクレーンによる組立手順やアーム・ブームの転倒防止処置といった安全管理上の留意点を反映すべきとしている。
+            <span class="cite">72-06-0505 厳しい条件下での重機の運搬（分解・組み立て）</span></p>
+          <p>土留盛土工は崩壊地に人を入れず遠隔無線操作で施工することになり、それを前提に配置と構造形状を設計した。航空レーザ測量の3次元地形モデルから、凸凹地形でも等レベルな施工基盤になるよう平面線形を設定した。
+            <span class="cite">72-06-0506</span></p>
+          <p>排水は、盛土と並行作業でき無人化施工での運搬・据付に課題が少ない工法として、20cm程度の巨礫を盛土の一部に敷き均す方式を採用した。簡易な構造で取り換えなどの維持管理も容易。
+            <span class="cite">72-06-0507</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          「無人化施工でやる」と決めた時点から構造形状の設計が変わる。
+          工法選定の基準に「無人化施工での施工性」を明示的に入れる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">13 / 無人化施工の実際</span>
+        <h3>映像と操作情報は、別の帯域で運ぶ</h3>
+        <div class="said">
+          <p>無人移動体画像伝送システムの実験では、新2.4GHz帯の5MHz幅は長距離でも無線が途切れず、映像のような大容量通信より無人建機の操作情報のような小容量通信に向く。チャンネル幅が狭いと映像伝送でコマ落ちが出る。
+            <span class="cite">72-06-0704</span></p>
+          <p>自律制御システムは、現場で一度操縦して走らせる必要はあるが目標軌道の事前測量が不要で、不整地運搬車のような決まった経路を走る建機に有効。経路が複雑に折れ曲がっていても追従できた。
+            <span class="cite">72-06-0705</span></p>
+          <p>熊本城の崩落石回収では、文化財である石材を損傷させないことが要件で、遠隔操縦と搭乗操縦を切り替えられる汎用装置の適用性が示された。残る課題は施工効率の向上。
+            <span class="cite">73-06-0715 汎用遠隔操縦装置を用いた熊本城崩落石回収の無人化施工</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          無線計画は「映像用の広帯域」と「操作用の切れない帯域」を分けて設計する。
+          遠隔／搭乗の切替機能は、危険域を抜けた後の効率回復に効く。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">14 / 応急復旧の3能力</span>
+        <h3>必要なのは諸元・工法選定・提案力</h3>
+        <div class="said">
+          <p>新八代駅ホーム桁支柱の応急復旧を担当した報告は、必要だったものを3つに整理している。①構造物諸元の収集整備、②復旧工法の迅速な選定、③施工方法の提案力。
+            <span class="cite">73-06-0752 新八代駅ホーム桁支柱復旧について</span></p>
+          <p>ジャッキダウン時に上屋＋ホーム桁の荷重を支持する必要があり、鋼板を取り付ける支柱が無い状態での施工だった。型枠→打設→養生→脱型で作業日数が増えることが懸念された。
+            <span class="cite">73-06-0752</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          ①だけは発災前にしか準備できない。手持ち構造物の図面・諸元がすぐ出る状態か、
+          今この時点で確認する価値がある。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">15 / 既設図面</span>
+        <h3>図面通りに配筋されていないことが多々ある</h3>
+        <div class="said">
+          <p>ロッキング橋脚の耐震補強では、既設鉄筋が図面通りに配筋されていない場合が多々あるため、まず鉄筋位置の探査が必要。
+            <span class="cite">73-06-0474 ロッキング橋脚を有する橋梁の耐震補強</span></p>
+          <p>別の橋では、竪壁背面の増厚補強に必要な裏込め土の撤去が限られた工期では困難で、ウイングの剛性を断面計算で考慮して前面側のみの増厚に変更した。上部構造は長期的な供用性確保のため、レベル2地震動でも塑性化を許容しない方針。
+            <span class="cite">72-06-0034 平成28年熊本地震で被災したロッキング橋脚を有する橋梁の構造変更について</span></p>
+          <p>耐震補強で構造系を大きく変えるため、新設部材との接合部だけでなく既設部材間の接合部も含めて耐荷力を確認する必要がある。
+            <span class="cite">72-01-0181</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          補強設計の前に鉄筋探査を工程に入れる。工期制約で標準工法が使えない前提で、
+          代替案を最初から2案持つ。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">16 / 体制</span>
+        <h3>緊急工事に社外の知見を制度として入れた</h3>
+        <div class="said">
+          <p>阿蘇大橋地区の元請は、迅速な設計施工が求められ、災害規模が甚大で大規模な無人化施工を行うことから、国内の砂防技術を集めるために社内に有識者による施工委員会を設立した。
+            <span class="cite">72-06-0503 阿蘇大橋地区斜面防災対策工事の取組み（その1）</span></p>
+          <p>調査・設計・無人化施工・計測は i-Construction と連動した緊急時の新しい取り組みで、今後の緊急災害対応の事業推進計画の参考になることを期して報告されている。
+            <span class="cite">72-06-0503</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          前例のない緊急工事では、判断の裏付けを外部有識者の会議体として明示的に作る。
+          「急いだから省略した」を後で説明できる形にしておく。</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="t">3ヶ月後 〜 3年後</span>
+      <h2>本復旧</h2>
+      <p class="sub">この段階の論文はほぼ第6部門（建設マネジメント）の工事報告で、具体的な施工上の勘所が書かれている。</p>
+    </div>
+    <div class="cards">
+
+      <article class="card">
+        <span class="k">17 / 工期短縮</span>
+        <h3>ECIで掘削工程の大幅短縮を目標に設定した</h3>
+        <div class="said">
+          <p>国道57号の災害復旧、二重峠トンネル（大津工区）では、ECI方式での提案により標準の掘削工程36ヶ月に対して掘削期間20ヶ月（16ヶ月短縮）を目標に施工を進めた。
+            <span class="cite">74-06-0264 熊本57号災害復旧 二重峠トンネル（大津工区）工事における掘削工程短縮について</span></p>
+          <p>通常の2班2交代制より作業員の増員は必要になるが、個人の休日を月平均9日確保したうえで、休工日なしの連続掘削が可能だった。
+            <span class="cite">74-06-0264</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          復旧工事の工期短縮は、施工者の技術提案を設計段階から入れる契約方式（ECI）と、
+          交代制の組み替えの両方で作る。増員と休日確保は両立しうる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">18 / 供用中の桁取替</span>
+        <h3>桁取替の際は、応力の履歴を管理</h3>
+        <div class="said">
+          <p>九州自動車道 緑川橋では、損傷した中間支点部の主桁を切断して取り替えるため、曲げ応力を伝達するバイパス部材を設けた。既設桁の切断や新設桁の溶接でバイパス部材のプレストレスが変動する懸念があり、油圧を自動で加減圧するジャッキ管理システムで反力を管理した。
+            <span class="cite">75-06-0688 熊本地震により被災した九州自動車道緑川橋の震災復旧</span></p>
+          <p>応力調整をしないと取替前と応力性状が異なり既設部材への影響が懸念されるため、応力調整を実施した。
+            <span class="cite">75-06-0688</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          部材取替は「取り替えたら元に戻る」ではない。取替後の応力性状を設計値に合わせる
+          調整工程と、その自動管理手段を計画に含める。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">19 / 断面制約下の補強</span>
+        <h3>入る工法が無いところから工法を作る</h3>
+        <div class="said">
+          <p>立野トンネルの復旧には工法の制約があった。一般的な剥落防止工（樹脂ネット）は薄いが小規模剥落しか対象にできない。耐荷力の大きい内巻工は巻厚10cm以上で、断面の狭小化を避けたい鉄道トンネルに収めるには、はつり等の大規模施工が必要になる。
+            <span class="cite">75-06-0858 熊本地震被害を受けた立野トンネル復旧工事</span></p>
+          <p>土被りが小さく地山が緩んでいる可能性があるため、AGFによるウレタン固結と鋼管先受けを補助工法として採用。坑門表面からAGFを施工した後、1mずつ覆工を撤去して支保工設置・吹付を行い、A計測でトンネル内部と地山に変状が出ないことを確認しながら進めた。
+            <span class="cite">75-06-0858</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          断面制約は工法選定の前提条件として最初に書き出す。
+          「1mずつ撤去して計測で確認」のような逐次施工は、地山が緩んだ箇所での標準手順になる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">20 / 急硬化材</span>
+        <h3>硬化時間を見誤ると列車が止まる</h3>
+        <div class="said">
+          <p>九州新幹線の軌道スラブ交換では、急硬化性のQ・T材の硬化時間管理が重要になる。限られた作業時間で見誤ると列車を抑止する可能性がある。
+            <span class="cite">73-06-0904 九州新幹線における軌道スラブ交換工事の施工</span></p>
+          <p>外気温度に応じた添加量を試験結果から近似線として求め、それを指標に本施工へ用いて、温度変化による品質のばらつきを抑え、品質規格と可使時間を同時に満たした。
+            <span class="cite">73-06-0904</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          夜間・限られた線路閉鎖での急硬化材は、外気温と添加量の関係を事前試験で
+          曲線化しておく。現場での勘に依存させない。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">21 / 発生土の活用</span>
+        <h3>災害発生土を防護構造の材料にする</h3>
+        <div class="said">
+          <p>2016年熊本地震の災害復旧工事では、災害発生土を活用した落石防護補強土壁を構築した。原形復旧が望ましい復旧工事のため、落石対策工を「落石防護補強土壁」と「落石防護擁壁・柵」の2種類に絞って検討した。
+            <span class="cite">75-06-0131 災害発生土を活用した落石防護補強土壁の構築</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          発生土の処理先確保と防護工の材料調達を、別々の問題として扱わない。
+          原形復旧という制約が工法の絞り込みを早める場合がある。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">22 / 架け替えの設計思想</span>
+        <h3>断層は避ける。避けられない分を設計する</h3>
+        <div class="said">
+          <p>国道325号 阿蘇大橋の復旧計画では、中間橋脚が推定活断層から離れているPC橋案が、断層変位の橋脚への影響が小さいと評価された。詳細設計では断層変位に対する落橋対策と、断層近傍の想定地震動に対する耐震設計を行う方針。
+            <span class="cite">72-cs03-0007 国道325号阿蘇大橋の復旧計画</span></p>
+          <p>渓谷内に橋脚を設置する案では黒川河岸部に橋脚が必要になるが、河岸は地震の影響で緩んでいるため斜面切土による安定化が前提とされた。
+            <span class="cite">72-cs03-0007</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          復旧構造物の位置選定は、耐震設計の前段にある最大の設計判断である。
+          「地震で緩んだ地盤」は復旧設計時点の地盤条件として扱う。</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="t">1年後 〜 10年後</span>
+      <h2>復興</h2>
+      <p class="sub">土木計画学の論文群が、被災者の生活実態と広域の経済影響を定量的に押さえている。</p>
+    </div>
+    <div class="cards">
+
+      <article class="card">
+        <span class="k">23 / 仮設住宅</span>
+        <h3>入居2週間〜1ヶ月半で、本当の要望が出る</h3>
+        <div class="said">
+          <p>益城町の仮設住宅入居者への聞き取りでは、入居直後にまず出るのは買い物や病院へのアクセス性の低さで、入居から2週間〜1ヶ月半で実際に暮らして困ることと要望が明らかになる。
+            <span class="cite">72-04-0130 熊本地震における益城町仮設住宅聞き取り調査の自由回答の分析</span></p>
+          <p>災害公営住宅では入居者の交通手段への配慮が重要で、高齢者には既に運転免許を持たない人も少なくない。必要戸数の把握には、発災直後の住まいに関する意識調査が要る。
+            <span class="cite">72-04-0129</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          仮設の立地評価は「戸数」ではなく買い物・医療へのアクセスで行う。
+          意向調査は入居直後と1ヶ月後の2回で、内容が変わる前提を置く。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">24 / 調査の死角</span>
+        <h3>郵送調査に答えない層が、支援が必要な層と重なる</h3>
+        <div class="said">
+          <p>震災復興期の郵送調査で未回答が多い世帯は「単身高齢者」と「主たる家計の支持者が20〜50代の現役労働者」。後者は勤務による不在で回答時間がなく、代わりに答える同居人もいないためとされる。
+            <span class="cite">72-04-0131 震災復興期における郵送調査未回答者層の実態と意識</span></p>
+          <p>郵送アンケートでは得にくい仮設住宅入居者の生活課題は、別に把握する必要がある。
+            <span class="cite">72-04-0131</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          郵送調査の回収率を母集団の代表性と読み替えない。
+          単身高齢者と現役労働者世帯には聞き取りを別建てで用意する。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">25 / 災害廃棄物</span>
+        <h3>発生量は宅地面積で見積もると当たりやすい</h3>
+        <div class="said">
+          <p>熊本県全体の災害廃棄物発生推計量は2,893千トンで、種類別ではコンクリートがら47.4%、木くず15.7%、金属くず0.5%。震度と最も相関が良かったのは宅地面積当たりの廃棄物発生量だった。
+            <span class="cite">73-07-0001 熊本地震における市町村の災害廃棄物発生量の比較分析</span></p>
+          <p>東日本大震災ではコンクリートがら比率が都市部で大きく（仙台市56.9%、いわき市53.6%）、県単位で熊本の方が高いのは被害が都市部に集中したことが一因。甲佐町・御船町は相関式より大幅に大きい外れ値だった。
+            <span class="cite">73-07-0001</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          仮置場の規模検討は宅地面積ベースの原単位で早期に当たりを付ける。
+          都市部集中型の被害では、がれき系（コンクリートがら）の比率が高くなる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">26 / 復旧の意思決定</span>
+        <h3>「地域の役割」が全線復旧の根拠になった</h3>
+        <div class="said">
+          <p>南阿蘇鉄道 第一白川橋梁は、沿線住民と全国からの復旧要望・支援を受け、国土交通省が地域公共交通としての役割、観光圏・広域周遊ルートでの位置付け、地方創生への寄与を踏まえて全線復旧を判断した。
+            <span class="cite">78-cs07-0001 南阿蘇鉄道 第一白川橋梁の復旧について</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          復旧の是非が費用便益だけで決まらない事例がある。
+          地域交通・観光・地方創生の位置付けを早期に整理しておくと、事業化の根拠になる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">27 / 回復の非対称</span>
+        <h3>同じ県内で、回復速度が3割以上違った</h3>
+        <div class="said">
+          <p>位置情報データによる住民行動の回復分析では、4月26日時点で益城町は避難者数・平均移動速度がともに6割程度の回復にとどまった。八代市は避難者が26日に9割、平均移動速度も27日に8割まで回復していた。
+            <span class="cite">73-04-0164 被災地における住民行動の回復過程に関する分析</span></p>
+          <p>高速道路網では、施設水準が回復しても道路網が連続してつながらなければ機能水準は回復せず、地震前の水準に達しない。
+            <span class="cite">72-01-0089</span></p>
+          <p>観光需要は、直接被害が少ない福岡県・長崎県・鹿児島県でも宿泊者数が大幅に減り、1年間の観光消費額が落ちた。旅行支援策は適用候補地をより広域で検討する必要がある。
+            <span class="cite">78-04-0066</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          復旧の進捗指標は区間別の復旧率ではなくネットワークの連続性で置く。
+          経済支援の設計範囲は被災自治体の外側まで広げる。</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="t">通期</span>
+      <h2>組織・制度 ― 10年前に間に合わなかったこと</h2>
+      <p class="sub">技術ではなく仕組みの話として、明確に「整備されていなかった」と記録されている項目。</p>
+    </div>
+    <div class="cards">
+
+      <article class="card">
+        <span class="k">28 / 事故補償の空白</span>
+        <h3>指示前の自主施工に、補償の枠組みが無かった</h3>
+        <div class="said">
+          <p>建設会社へのヒアリングでは、自宅周辺の道路啓開や危険箇所の修復を、管理者の指示前に自主判断で実施した例が多々あった。重大事故は発生しなかったが危険作業は多く、事故補償対策は十分に整備されていなかった。
+            <span class="cite">75-cs10-0067 平成28年熊本地震後初期の建設会社の応急復旧対応に関するヒアリング調査</span></p>
+          <p>基礎自治体側の調査では、災害協定で未契約時の建設業者の事故補償を定めているところは皆無だった。
+            <span class="cite">75-cs10-0066 平成28年熊本地震における基礎自治体の応急復旧対応に関するヒアリング調査</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          自主的な道路啓開は今回も発生する。着手前に事故補償の取り扱いを
+          発注者と確認し、記録に残す。協定に条項が無いこと自体を前提に動く。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">29 / 発注者側の人手</span>
+        <h3>自治体の技術職員は、被災調査に専念できない</h3>
+        <div class="said">
+          <p>管理施設の被災状況を迅速に把握して応急対策を打つことが重要なのに、中心となるべき技術職員が被災調査や応急対策に必ずしも専念できなかった。
+            <span class="cite">75-cs10-0066</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          発注者が意思決定できない前提で、支援側が判断材料を作って持ち込む体制を組む。
+          「指示待ち」も「勝手にやる」もリスクになる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">30 / 情報の一元化（設計）</span>
+        <h3>CIMは工種を絞ると次に使えない</h3>
+        <div class="said">
+          <p>阿蘇大橋地区斜面対策工事のCIMモデルは、次施工箇所だけでなく維持更新時や周辺土質検証、同種工事にも活用できると期待されている。一方で本工事に特化したのり面CIMのため対象工種が限られ、グラウンドアンカー工や法枠工にも対応できるよう改良する予定とされた。
+            <span class="cite">73-06-0654 阿蘇大橋地区斜面対策工事におけるCIMを用いた施工</span></p>
+          <p>UAVによる出来形管理は、大規模現場では効率化に加えて施工エリア全体の把握にも有効だった。
+            <span class="cite">74-06-0096</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          緊急工事のCIMは、その工事に最適化すると維持管理段階で使えなくなる。
+          最初から工種の拡張余地を持たせる。</div>
+      </article>
+
+      <article class="card">
+        <span class="k">31 / 人材育成</span>
+        <h3>復旧現場の技術的判断は、教材として整理できる</h3>
+        <div class="said">
+          <p>熊本地震で被災した斜張橋の復旧事例では、技術的判断の過程と個々の調査をブルーム・タキソノミーの枠組で分類でき、そこで使われた技術力を整理・考察できた。
+            <span class="cite">75-cs01-0033 熊本地震で被災した斜張橋の復旧事例に基づく道路橋を維持管理する技術力に関する一考察</span></p>
+          <p>「分析する」「評価する」といった高次の認知過程は、手続的知識で足りる場合と、その元の概念的知識まで立ち返る必要がある場合とがある。
+            <span class="cite">75-cs01-0033</span></p>
+        </div>
+        <div class="do"><b>対応（実務）への示唆</b>
+          今回の判断過程を、その場で記録に残す。復旧現場は技術力の育成機会であり、
+          10年後に振り返れる形にしておくこと自体が成果物になる。</div>
+      </article>
+    </div>
+  </div>
+
+  <!-- ============ 3.2 ============ -->
+  <div class="blk">
+    <div class="blk-head">
+      <span class="eyebrow">3.2 / 検証すべき内容</span>
+    </div>
+    <ol class="checks">
+      <li><span class="mk">01</span><p><strong>熊本城石垣の耐震補強。</strong>令和8年地震の直前、2026年の第81回大会に「特別史跡熊本城跡石垣の耐震補強に関する実験的研究」その1〜3が投稿された。振動台実験では大規模地震相当の600galでも築石は落下せず、栗石巻込み型・水平敷設型ともに有効。今回はこの補強仕様が実地で検証される最初の機会になりうる。<span class="cite">81-03-C002199 / 81-03-C003734 / 81-03-C003189</span></p></li>
+      <li><span class="mk">02</span><p><strong>設計水平震度の妥当性。</strong>累積示力線法による石垣の検証では、大規模地震動として設計水平震度 kh＝0.20 程度が妥当と結論されている。今回の実測との照合は直接的な検証になる。<span class="cite">76-cs10-0041</span></p></li>
+      <li><span class="mk">03</span><p><strong>復旧済み構造物の再被災。</strong>2020〜2021年に復旧完了が報告された緑川橋・立野トンネル・南阿蘇鉄道第一白川橋梁・白川発電所導水路、および2026年に補修状況が報告された風車支持構造物は、いずれも「一度直したもの」である。再被災の有無は復旧設計の妥当性を直接問う。<span class="cite">75-06-0688 / 75-06-0858 / 78-cs07-0001 / 76-06-0407 / 81-06-C001675</span></p></li>
+      <li><span class="mk">04</span><p><strong>リモートセンシングの取りこぼし。</strong>航空レーザ測量と深層学習による被害建物検出は、正答率70〜87%に対して再現率が39〜42%で、見逃しの多さが繰り返し課題に挙がる。広域一次スクリーニングには使えるが、「検出されなかった＝無被害」とは読めない。<span class="cite">79-cs14-0041 / 80-08-C003960 / 75-cs10-0019</span></p></li>
+      <li><span class="mk">05</span><p><strong>阿蘇大橋の新橋と断層変位設計。</strong>2017年の復旧計画では活断層から離す橋脚配置を選び、詳細設計で断層変位に対する落橋対策と断層近傍の想定地震動に対する耐震設計を行う方針だった。その設計思想が今回どう機能したかは重要な検証対象。<span class="cite">72-cs03-0007</span></p></li>
+    </ol>
+  </div>
+
+</div>
+
+<script>
+/* 引用の論文ID（.cite / .src 内）を原本PDFへのリンクにする。
+   - URLは paper_id から導出する: 00035/{1945+回}/{回-部門|回-cs}/{id}.pdf
+     この規則はコーパス230件中、URLを持つ全222件で実URLと一致することを確認済み（2026-07-31）。
+   - fetch_pdfs.py でPDFを同梱済み（pdf/manifest.js がある）ならローカルPDFを優先する。
+   - 番号が C で始まるID（2025年以降・Confit経由）はURL未収録なのでリンクにしない。
+   - タブが hidden でも DOM は組み上がっているので、フックを使わず読込時に一度だけ実行する。 */
+(function () {
+  const ID_RE = /\b(\d{2})-(cs\d+|\d{2})-(C\d{6}|\d{4}[a-z]?)\b/g;
+  const LOCAL = window.KQ_PDF_LOCAL || null;
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  function href(id, conf, sec, num) {
+    if (LOCAL && LOCAL[id]) return "pdf/" + id + ".pdf";
+    if (num.charAt(0) === "C") return "";
+    const dir = conf + "-" + (sec.indexOf("cs") === 0 ? "cs" : sec);
+    return "http://library.jsce.or.jp/jsce/open/00035/" + (1945 + Number(conf)) + "/" + dir + "/" + id + ".pdf";
+  }
+
+  document.querySelectorAll("#view-insights .cite, #view-insights .src").forEach((el) => {
+    el.innerHTML = esc(el.textContent).replace(ID_RE, (id, conf, sec, num) => {
+      const u = href(id, conf, sec, num);
+      return u
+        ? '<a href="' + u + '" target="_blank" rel="noopener noreferrer" title="原本PDFを開く">' + id + "</a>"
+        : '<span class="nolink" title="原本PDF未収録（2025年以降・Confit経由の論文）">' + id + "</span>";
+    });
+  });
+})();
+</script>
+
+
+</div>
+
+<script>
+/* ================= タブ切替 =================
+   各 view ファイルは、初回表示時に一度だけ実行したい処理があれば
+     window.VIEW_HOOKS.<hash> = function () { ... };
+   に登録する。hash は下の TABS の hash と一致させる。            */
+window.VIEW_HOOKS = window.VIEW_HOOKS || {};
+const TABS = [
+  { btn: "tab-papers",   view: "view-papers",   hash: "papers" },
+  { btn: "tab-overview", view: "view-overview", hash: "overview" },
+  { btn: "tab-insights", view: "view-insights", hash: "insights" },
+];
+const HOOK_DONE = {};
+
+function activate(hash, moveFocus) {
+  const target = TABS.find((t) => t.hash === hash) || TABS[0];
+  TABS.forEach((t) => {
+    const on = t === target;
+    const btn = document.getElementById(t.btn);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+    btn.tabIndex = on ? 0 : -1;                 /* roving tabindex */
+    document.getElementById(t.view).hidden = !on;
+  });
+  syncBarHeight();
+  const hook = window.VIEW_HOOKS[target.hash];
+  if (hook && !HOOK_DONE[target.hash]) { HOOK_DONE[target.hash] = true; hook(); }
+  if (history.replaceState) history.replaceState(null, "", "#" + target.hash);
+  if (moveFocus) {
+    /* ビューを切り替えたら先頭へ。アプリバーは sticky なので隠れない */
+    window.scrollTo({ top: 0, behavior: "auto" });
+    document.getElementById(target.btn).focus({ preventScroll: true });
+  }
+}
+
+TABS.forEach((t, i) => {
+  const btn = document.getElementById(t.btn);
+  btn.addEventListener("click", () => activate(t.hash, true));
+  btn.addEventListener("keydown", (e) => {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (step) {
+      e.preventDefault();
+      activate(TABS[(i + step + TABS.length) % TABS.length].hash, true);
+    } else if (e.key === "Home") {
+      e.preventDefault(); activate(TABS[0].hash, true);
+    } else if (e.key === "End") {
+      e.preventDefault(); activate(TABS[TABS.length - 1].hash, true);
+    }
+  });
+});
+window.addEventListener("hashchange", () => activate((location.hash || "").replace("#", ""), false));
+
+/* 貼り付き要素（論文一覧の絞り込みバー）の基準になるアプリバー高さ */
+function syncBarHeight() {
+  const h = document.querySelector(".appbar").getBoundingClientRect().height;
+  document.documentElement.style.setProperty("--barH", h + "px");
+}
+syncBarHeight();
+window.addEventListener("resize", syncBarHeight);
+window.addEventListener("load", syncBarHeight);   /* 書体の確定後に再計測 */
+
+activate((location.hash || "").replace("#", ""), false);
+</script>

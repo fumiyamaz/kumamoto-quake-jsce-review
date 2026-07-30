@@ -1,0 +1,8 @@
+# 論文の原本PDFは公開リポジトリに置かない（著作権）
+pdf/
+*.pdf
+
+# OS・エディタ
+Thumbs.db
+desktop.ini
+.DS_Store
