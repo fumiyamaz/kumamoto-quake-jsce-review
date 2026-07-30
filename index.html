@@ -857,14 +857,16 @@
                                color: var(--accent); padding-top: 0.42em; }
   #view-insights .checks p { max-width: none; font-size: 0.95rem; }
 
-  /* ---- 引用の論文IDを原本PDFへのリンクにする（下の script で生成） ---- */
+  /* ---- 引用の論文リンク（下の script が ID＋タイトルを <a> にする） ---- */
+  /* タブ01の題名リンクと同じ流儀（実線下線・ホバーでアクセント色）に揃える */
   #view-insights .cite a, #view-insights .src a {
     color: var(--ink-soft); text-decoration: none;
-    border-bottom: 1px dotted var(--ink-faint); }
+    border-bottom: 1px solid var(--rule); }
   #view-insights .cite a:hover, #view-insights .src a:hover {
     color: var(--accent); border-bottom-color: var(--accent); }
-  /* URLが未収録の論文（2025年以降）はリンクにできないので破線で区別する */
-  #view-insights .nolink { border-bottom: 1px dashed var(--rule); cursor: help; }
+  /* URLが未収録の論文（2025年以降）はリンクではないので、下線を付けない
+     （破線でもリンクに見えてしまい「開かない」と誤解される）。理由はツールチップで示す */
+  #view-insights .nolink { cursor: help; }
 </style>
 
 <div id="view-insights" role="tabpanel" aria-labelledby="tab-insights" tabindex="0" hidden>
@@ -1435,9 +1437,13 @@
      この規則はコーパス230件中、URLを持つ全222件で実URLと一致することを確認済み（2026-07-31）。
    - fetch_pdfs.py でPDFを同梱済み（pdf/manifest.js がある）ならローカルPDFを優先する。
    - 番号が C で始まるID（2025年以降・Confit経由）はURL未収録なのでリンクにしない。
-   - タブが hidden でも DOM は組み上がっているので、フックを使わず読込時に一度だけ実行する。 */
+   - タブが hidden でも DOM は組み上がっているので、フックを使わず読込時に一度だけ実行する。
+   - リンクは「ID＋それに続くタイトル文」まで覆う。ID（数十px）だけをリンクにすると、
+     利用者が自然に押すタイトル部分が反応せず「リンクが開かない」ように見える
+     （タブ01は題名全体がリンクなので、同じ操作感に揃える）。
+     複数IDを「／」「/」で併記した引用では、区切りで止まり各IDが個別のリンクになる。 */
 (function () {
-  const ID_RE = /\b(\d{2})-(cs\d+|\d{2})-(C\d{6}|\d{4}[a-z]?)\b/g;
+  const ID_RE = /\b(\d{2})-(cs\d+|\d{2})-(C\d{6}|\d{4}[a-z]?)\b(\s+[^/／]*[^/／\s])?/g;
   const LOCAL = window.KQ_PDF_LOCAL || null;
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -1449,11 +1455,13 @@
   }
 
   document.querySelectorAll("#view-insights .cite, #view-insights .src").forEach((el) => {
-    el.innerHTML = esc(el.textContent).replace(ID_RE, (id, conf, sec, num) => {
+    el.innerHTML = esc(el.textContent).replace(ID_RE, (label, conf, sec, num) => {
+      // label = ID＋タイトル文（あれば）。URLの導出にはID部分だけを使う
+      const id = conf + "-" + sec + "-" + num;
       const u = href(id, conf, sec, num);
       return u
-        ? '<a href="' + u + '" target="_blank" rel="noopener noreferrer" title="原本PDFを開く">' + id + "</a>"
-        : '<span class="nolink" title="原本PDF未収録（2025年以降・Confit経由の論文）">' + id + "</span>";
+        ? '<a href="' + u + '" target="_blank" rel="noopener noreferrer" title="' + id + ' の原本PDFを開く">' + label + "</a>"
+        : '<span class="nolink" title="' + id + ' は原本PDF未収録（2025年以降・Confit経由の論文）">' + label + "</span>";
     });
   });
 })();
