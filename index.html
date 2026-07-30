@@ -1,17 +1,14 @@
-<!--
-  統合レポートのシェル（外枠）。
-  - デザイントークン、基本タイポグラフィ、アプリバー、タブ切替、共通注意、フッタ、タブ制御JS
-  - 各タブの中身は下記マーカー（HTMLコメント形式）の位置に build_report.py が差し込む
-      VIEW_PAPERS   → view_papers.html
-      VIEW_OVERVIEW → view_overview.html
-      VIEW_INSIGHTS → view_insights.html
-    ※このコメント内にマーカーそのものを書くとコメントが入れ子で壊れるため名前だけ記す
-  - タブ固有のCSS・JSは各 view ファイル側に置く。ここには3タブ共通のものだけを書く。
-  - 差込後に件数と論文データのプレースホルダが置換される（名前は build_report.py 参照）。
-    プレースホルダの文字列そのものをコメントに書くと多重置換になるので書かない。
--->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="平成28年（2016年）熊本地震を扱った土木学会全国大会論文の振り返り。論文一覧、年次・部門・テーマ別の比較、応急対応から復旧復興までの実務示唆。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%AF%3C/text%3E%3C/svg%3E">
 <title>平成28年熊本地震 — JSCE全国大会論文からの振り返り</title>
-
+</head>
+<body>
 <style>
   /* ================= design tokens ================= */
   :root {
@@ -159,7 +156,7 @@
 
 </style>
 
-<!-- ==================== APP BAR ==================== -->
+
 <header class="appbar">
   <div class="appbar-inner">
     <div class="brandrow">
@@ -191,15 +188,7 @@
 
 <div class="page">
 
-  <!--
-  タブ01「論文一覧」の中身。検索・絞り込みのための道具として作る（読み物にしない）。
-  shell.html の VIEW_PAPERS マーカーの位置に差し込まれる。
-  このファイルだけを編集すれば、他タブに影響せず一覧の見た目・挙動を変えられる。
-
-  - CSS は全て #view-papers 配下にスコープする。id は kq- で始めて他ビューと衝突させない。
-  - 件数は DATA から数える（プレースホルダの文字列そのものはここに書かない。多重置換になる）。
-  - 論文データのJSONの差込口だけは1箇所ここに置く。
--->
+  
 <style>
   /* ---- ツールバー：このビューの実体。アプリバーの直下に貼り付く ---- */
   #view-papers { padding-top: 0.9rem; }
@@ -353,8 +342,7 @@
   <div id="kq-list"></div>
 </div>
 
-<!-- 原本PDFをローカルに同梱した場合だけ pdf/manifest.js が存在する（fetch_pdfs.py が生成）。
-     無ければ404で無視され、リンクは学会サーバーのURLのまま。 -->
+
 <script src="pdf/manifest.js"></script>
 <script>
 (function () {
@@ -554,21 +542,7 @@
 </script>
 
 
-  <!--
-  タブ02「概要情報」の中身。
-  shell.html の VIEW_OVERVIEW マーカーの位置に差し込まれる。
-  内容: 主要数値 ＋ 2.1 論文の年次ごとの比較／2.2 部門別の比較／2.3 テーマ別の比較。
-  このファイルだけを編集すれば、他タブに影響せず概要情報を変えられる。
-
-  ・表題と要約文はアプリバーの見出しと重複するため置かない。
-  ・tier（抽出の層別）の説明はタブ01の凡例にあるため、ここでは繰り返さない。
-  ・見出しは中立なラベル。所見の文章は置かず、表とキャプションだけを見せる。
-
-  【重要】3つの表は直書きせず、build_report.py が corpus から数え直した集計を
-  差し込んで下の script が組み立てる。corpus が更新されても数値がずれない。
-  表の見た目を変えるときは下の render 関数を、数え方を変えるときは
-  build_report.py の build_overview_agg() を直す。
--->
+  
 <style>
   #view-overview .facts { margin-top: 1.6rem; display: grid; gap: 1px;
     grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
@@ -635,7 +609,7 @@
     <div class="fact"><dt>最多年</dt><dd id="ov-peak">–</dd></div>
   </dl>
 
-  <!-- ============ 2.1 ============ -->
+  
   <div class="blk">
     <div class="blk-head">
       <span class="eyebrow">2.1</span>
@@ -650,7 +624,7 @@
     </div>
   </div>
 
-  <!-- ============ 2.2 ============ -->
+  
   <div class="blk">
     <div class="blk-head">
       <span class="eyebrow">2.2</span>
@@ -665,7 +639,7 @@
     </div>
   </div>
 
-  <!-- ============ 2.3 ============ -->
+  
   <div class="blk">
     <div class="blk-head">
       <span class="eyebrow">2.3</span>
@@ -798,15 +772,7 @@
 </script>
 
 
-  <!--
-  タブ03「応急対応・復旧復興への示唆」の中身。
-  shell.html の VIEW_INSIGHTS マーカーの位置に差し込まれる。
-  内容: 3.1 時間軸31項目（5フェーズ。第1フェーズはA/Bの2グループ）／
-        3.2 今回確かめるべき5点。
-  このファイルだけを編集すれば、他タブに影響せず示唆を変えられる。
-  カード1枚 = <article class="card"> で、見出し・論文が示したこと（.said）・
-  対応（実務）への示唆（.do）の3段構成。追加・削除はカード単位で行う。
--->
+  
 <style>
   /* ---- カードグリッド ---- */
   #view-insights .cards { display: grid; gap: 1px; background: var(--rule);
@@ -908,7 +874,7 @@
     <span class="vh-d">時間軸31項目 ／ 確かめるべき5点</span>
   </div>
 
-  <!-- ============ 3.0 ============ -->
+  
   <div class="blk">
     <div class="blk-head">
       <span class="eyebrow">3.0 / 概要</span>
@@ -928,7 +894,7 @@
     </p>
   </div>
 
-  <!-- ============ 3.1 ============ -->
+  
   <div class="blk">
     <div class="blk-head">
       <span class="eyebrow">3.1 / 実務への示唆</span>
@@ -1447,7 +1413,7 @@
     </div>
   </div>
 
-  <!-- ============ 3.2 ============ -->
+  
   <div class="blk">
     <div class="blk-head">
       <span class="eyebrow">3.2 / 検証すべき内容</span>
@@ -1557,3 +1523,5 @@ window.addEventListener("load", syncBarHeight);   /* 書体の確定後に再計
 
 activate((location.hash || "").replace("#", ""), false);
 </script>
+</body>
+</html>
